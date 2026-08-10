@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Trace-E · Android Mock · WEB-Quarters</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Trace-E HQ</title>
   <style>
     :root {
       --spidey-red: #E53935;
@@ -18,159 +18,61 @@
       --white: #FFFFFF;
       --font: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
       --display: "Comic Sans MS", "Trebuchet MS", cursive, sans-serif;
-      --phone-w: 390px;
-      --phone-h: 844px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; min-height: 100%; }
-    body {
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
       font-family: var(--font);
       color: var(--ink);
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 24px 16px 40px;
-      background:
-        radial-gradient(ellipse at 20% 10%, rgba(255,255,255,.55), transparent 45%),
-        radial-gradient(ellipse at 80% 90%, rgba(30,136,229,.25), transparent 40%),
-        repeating-linear-gradient(0deg, transparent 0 36px, rgba(255,255,255,.12) 36px 38px),
-        linear-gradient(165deg, #9FD4F5 0%, #7FC0EA 50%, #5BA8D8 100%);
+      background: linear-gradient(165deg, #9FD4F5 0%, #7FC0EA 50%, #5BA8D8 100%);
     }
-
-    .stage-label {
-      position: fixed;
-      top: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 50;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .78rem;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-      color: var(--web-blue-deep);
-      background: rgba(255,255,255,.88);
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 6px 14px;
-      box-shadow: 0 4px 14px rgba(40,90,140,.2);
-      white-space: nowrap;
-    }
-
-    /* ===== PHONE CHASSIS ===== */
-    .phone {
-      width: min(100%, var(--phone-w));
-      height: min(92vh, var(--phone-h));
-      max-height: 900px;
-      position: relative;
-      border-radius: 42px;
-      padding: 12px;
-      background: linear-gradient(145deg, #2A2E36 0%, #121418 45%, #0A0C10 100%);
-      box-shadow:
-        0 0 0 2px #3A3F4A,
-        0 0 0 5px #0E1014,
-        0 28px 50px rgba(20,50,80,.45),
-        inset 0 1px 0 rgba(255,255,255,.12);
-    }
-    .phone::before {
-      content: "";
-      position: absolute;
-      top: 18px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 108px;
-      height: 28px;
-      background: #0A0C10;
-      border-radius: 18px;
-      z-index: 20;
-      box-shadow: inset 0 0 0 1px #222;
-    }
-    .phone::after {
-      content: "";
-      position: absolute;
-      top: 26px;
-      left: calc(50% + 28px);
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #4A7AB0, #0A2030 70%);
-      z-index: 21;
-      box-shadow: 0 0 0 2px #111;
-    }
-    .side-btn {
-      position: absolute;
-      right: -3px;
-      width: 3px;
-      border-radius: 2px 0 0 2px;
-      background: #3A3F4A;
-    }
-    .side-btn.pwr { top: 160px; height: 56px; }
-    .side-btn.vol-up { left: -3px; right: auto; top: 140px; height: 36px; border-radius: 0 2px 2px 0; }
-    .side-btn.vol-dn { left: -3px; right: auto; top: 186px; height: 36px; border-radius: 0 2px 2px 0; }
-
-    .screen {
-      width: 100%;
-      height: 100%;
-      border-radius: 32px;
-      overflow: hidden;
-      position: relative;
-      background: linear-gradient(180deg, #B8E4FF 0%, #9FD4F5 40%, #7FC0EA 100%);
+    body.android-app {
       display: flex;
       flex-direction: column;
+      padding: 0;
     }
-
-    /* Android status bar */
-    .status-bar {
-      flex: 0 0 auto;
+    .screen {
+      flex: 1;
+      min-height: 0;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 14px 18px 6px;
-      font-size: .7rem;
-      font-weight: 800;
-      color: var(--ink);
-      opacity: .85;
+      flex-direction: column;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+      background:
+        radial-gradient(ellipse at 20% 0%, rgba(255,255,255,.45), transparent 42%),
+        linear-gradient(180deg, #B8E4FF 0%, #9FD4F5 40%, #7FC0EA 100%);
     }
-    .status-bar .icons { display: flex; gap: 6px; align-items: center; }
-    .status-bar .dot {
-      width: 14px; height: 8px;
-      border: 1.5px solid currentColor;
-      border-radius: 2px;
-      position: relative;
-    }
-    .status-bar .dot::after {
-      content: "";
-      position: absolute;
-      inset: 1.5px 3px 1.5px 1.5px;
-      background: currentColor;
-      border-radius: 1px;
-    }
-
-    /* App chrome */
     .app-bar {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 4px 14px 10px;
+      padding: 10px 14px 8px;
     }
-    .app-bar .avatar {
+    .avatar {
       width: 40px; height: 40px;
       border-radius: 50%;
-      object-fit: cover;
-      object-position: center top;
       border: 2.5px solid var(--spidey-red);
+      background: radial-gradient(circle at 35% 30%, #FF8A80, var(--spidey-red));
       box-shadow: 0 2px 0 rgba(0,0,0,.12);
-      background: #fff;
+      display: grid; place-items: center;
+      color: #fff;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .85rem;
     }
     .app-bar h1 {
       margin: 0;
       font-family: var(--display);
-      font-size: 1.05rem;
+      font-size: 1.1rem;
       font-weight: 900;
       color: #fff;
       text-transform: uppercase;
-      text-shadow: 0 2px 0 rgba(30,80,130,.35), 0 0 12px rgba(255,255,255,.4);
+      text-shadow: 0 2px 0 rgba(30,80,130,.35);
       line-height: 1.1;
     }
     .app-bar .sub {
@@ -183,7 +85,6 @@
       display: inline-block;
       margin-top: 2px;
     }
-
     .team-row {
       flex: 0 0 auto;
       display: flex;
@@ -201,30 +102,31 @@
       background: rgba(255,255,255,.9);
       border: 2.5px solid var(--ink);
       border-radius: 999px;
-      padding: 3px 10px 3px 3px;
+      padding: 4px 10px 4px 4px;
       font-size: .65rem;
       font-weight: 900;
       text-transform: uppercase;
     }
-    .mini-chip.spidey { border-color: var(--spidey-red); }
-    .mini-chip.ghost { border-color: var(--ghost-pink); }
-    .mini-chip.spin { border-color: #1A1A1A; }
-    .mini-chip img {
-      width: 26px; height: 26px;
-      border-radius: 50%;
-      object-fit: cover;
-      object-position: top;
+    .mini-chip .dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: grid; place-items: center; color: #fff; font-size: .55rem;
     }
+    .mini-chip.spidey { border-color: var(--spidey-red); }
+    .mini-chip.spidey .dot { background: var(--spidey-red); }
+    .mini-chip.ghost { border-color: var(--ghost-pink); }
+    .mini-chip.ghost .dot { background: var(--ghost-purple); }
+    .mini-chip.spin { border-color: #1A1A1A; }
+    .mini-chip.spin .dot { background: #222; color: var(--spin-yellow); }
 
     .scroll {
       flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 0 10px 8px;
-      scrollbar-width: thin;
+      padding: 0 10px 10px;
+      -webkit-overflow-scrolling: touch;
     }
 
-    /* Cam with simplified speakers */
     .cam-block {
       display: grid;
       grid-template-columns: 28px 1fr 28px;
@@ -252,7 +154,6 @@
       border: 1.5px solid #111;
     }
     .spk-mini .drv.lg { width: 16px; height: 16px; }
-
     .cam-frame {
       position: relative;
       border-radius: 22px;
@@ -279,15 +180,16 @@
       border: 3px solid #0A2748;
     }
     .cam-viewport.live { background: #0a1a33; }
-    .cam-viewport.flip-v #mockCam { transform: scaleY(-1); }
-    .cam-viewport.flip-180 #mockCam { transform: rotate(180deg); }
-    #mockCam {
+    .cam-viewport.flip-v #liveCam { transform: scaleY(-1); }
+    .cam-viewport.flip-180 #liveCam { transform: rotate(180deg); }
+    #liveCam {
       position: absolute; inset: 0;
       width: 100%; height: 100%;
       object-fit: cover;
       display: none;
+      background: #000;
     }
-    .cam-viewport.live #mockCam { display: block; }
+    .cam-viewport.live #liveCam { display: block; }
     .cam-ph {
       position: absolute; inset: 0;
       display: grid; place-items: center;
@@ -297,9 +199,6 @@
       font-size: .95rem;
       text-shadow: 0 2px 8px rgba(0,40,80,.4);
       padding: 12px;
-      background:
-        radial-gradient(circle at 50% 40%, rgba(255,255,255,.28), transparent 55%),
-        linear-gradient(160deg, rgba(30,136,229,.4), rgba(21,101,192,.5));
     }
     .cam-viewport.live .cam-ph { display: none; }
     .live-pill {
@@ -314,11 +213,6 @@
       border: 2px solid #fff;
       border-radius: 999px;
       padding: 3px 8px;
-      animation: pulse 1.4s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%,100% { filter: brightness(1); }
-      50% { filter: brightness(1.12); }
     }
     .crest {
       position: absolute; inset: 0;
@@ -327,7 +221,6 @@
     }
     .crest svg { width: 38%; }
 
-    /* Red console */
     .console {
       background: linear-gradient(180deg, #FF6B63 0%, var(--spidey-red) 45%, var(--spidey-red-deep));
       border-radius: 20px;
@@ -336,7 +229,6 @@
       padding: 12px 10px 14px;
       margin-bottom: 8px;
     }
-
     .holo-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -359,7 +251,6 @@
       color: var(--web-blue-deep);
       line-height: 1;
     }
-
     .drive-zone {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -368,7 +259,7 @@
       margin-bottom: 10px;
     }
     .pads-wrap { text-align: center; }
-    .pads-wrap .label {
+    .pads-wrap .label, .stick-wrap .label {
       margin: 0 0 6px;
       font-family: var(--display);
       font-weight: 900;
@@ -410,8 +301,6 @@
       transform: translateY(3px);
       box-shadow: 0 1px 0 #6D1412;
     }
-
-    /* Virtual stick */
     .stick-wrap { text-align: center; }
     .stick-pad {
       width: 112px; height: 112px;
@@ -435,7 +324,6 @@
       border: 2.5px solid #fff;
       box-shadow: 0 3px 8px rgba(0,0,0,.35);
       pointer-events: none;
-      transition: transform .05s linear;
     }
     .stick-label {
       margin: 6px 0 0;
@@ -443,7 +331,6 @@
       font-weight: 800;
       color: rgba(255,255,255,.9);
     }
-
     .gestures-btn {
       display: block;
       width: 100%;
@@ -465,7 +352,6 @@
       color: #fff;
       box-shadow: 0 3px 0 #0D3A6E;
     }
-
     .panel {
       margin-top: 8px;
       padding: 8px 10px;
@@ -491,10 +377,7 @@
       color: rgba(255,255,255,.85);
       margin: 2px 0 6px;
     }
-    .row {
-      display: flex;
-      gap: 6px;
-    }
+    .row { display: flex; gap: 6px; }
     .row input {
       flex: 1;
       min-width: 0;
@@ -526,7 +409,6 @@
       font-weight: 700;
       color: rgba(255,255,255,.88);
     }
-
     .esp-row {
       display: flex;
       flex-wrap: wrap;
@@ -550,476 +432,716 @@
       background: linear-gradient(180deg, #90A4AE, #546E7A);
       box-shadow: 0 3px 0 #37474F;
     }
-
+    .esp-row button.fs {
+      background: linear-gradient(180deg, #64B5F6, var(--web-blue-deep));
+      box-shadow: 0 3px 0 #0D47A1;
+    }
     .status-pills {
       display: flex;
       flex-wrap: wrap;
-      gap: 5px;
-      padding: 4px 2px 10px;
+      gap: 6px;
+      margin-bottom: 8px;
     }
     .pill {
       font-size: .58rem;
       font-weight: 800;
-      background: rgba(255,255,255,.78);
-      border: 1.5px solid rgba(255,255,255,.95);
+      background: rgba(255,255,255,.88);
+      border: 2px solid #fff;
       border-radius: 999px;
-      padding: 3px 8px;
+      padding: 4px 8px;
       color: var(--ink);
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
     }
     .led {
-      width: 7px; height: 7px;
-      border-radius: 50%;
+      width: 8px; height: 8px; border-radius: 50%;
       background: #43A047;
       box-shadow: 0 0 6px #66BB6A;
     }
-    .led.warn { background: #FFA000; box-shadow: 0 0 6px #FFB74D; }
     .led.off { background: #90A4AE; box-shadow: none; }
-
-    /* Nav gesture bar */
-    .nav-bar {
-      flex: 0 0 auto;
-      display: flex;
-      justify-content: center;
-      padding: 6px 0 10px;
+    .led.warn { background: #FFB300; box-shadow: 0 0 6px #FFCA28; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(18px + var(--safe-bottom));
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      background: rgba(10,30,60,.92);
+      color: #fff;
+      font-weight: 800;
+      font-size: .78rem;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 2px solid #fff;
+      transition: .2s ease;
+      z-index: 40;
+      max-width: 90vw;
+      text-align: center;
     }
-    .nav-bar span {
-      width: 108px; height: 4px;
-      border-radius: 4px;
-      background: rgba(0,0,0,.35);
-    }
-
-    /* Gestures overlay */
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .gestures-overlay {
+      position: fixed; inset: 0;
+      background: rgba(8,24,48,.55);
       display: none;
-      position: absolute;
-      inset: 0;
+      place-items: center;
       z-index: 30;
-      background: rgba(10,30,50,.55);
-      padding: 56px 14px 24px;
-      align-items: flex-start;
-      justify-content: center;
+      padding: 16px;
     }
-    .gestures-overlay.open { display: flex; }
+    .gestures-overlay.open { display: grid; }
     .gestures-panel {
-      width: 100%;
-      max-height: 85%;
-      overflow-y: auto;
-      background: linear-gradient(180deg, #FFF8E1, #FFE082);
+      width: min(100%, 360px);
+      background: linear-gradient(180deg, #B8E4FF, #7FC0EA);
       border: 3px solid #fff;
-      border-radius: 18px;
-      padding: 12px;
-      box-shadow: 0 12px 28px rgba(0,0,0,.3);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: 0 16px 40px rgba(0,40,80,.35);
     }
     .gestures-panel h3 {
       margin: 0 0 4px;
       font-family: var(--display);
-      font-size: 1rem;
+      font-weight: 900;
       text-transform: uppercase;
+      color: var(--web-blue-deep);
     }
-    .gestures-panel .sub { margin: 0 0 10px; font-size: .68rem; font-weight: 700; opacity: .75; }
+    .gestures-panel .sub {
+      margin: 0 0 10px;
+      font-size: .7rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
     .gesture-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
     }
     .gkey {
-      border: 2px solid var(--ink);
+      border: 2.5px solid var(--ink);
       border-radius: 12px;
       background: #fff;
-      padding: 8px 4px;
-      cursor: pointer;
+      padding: 10px;
       display: flex;
-      flex-direction: column;
+      gap: 8px;
       align-items: center;
-      gap: 2px;
+      cursor: pointer;
+      font-weight: 800;
     }
-    .gkey .k { font-family: var(--display); font-weight: 900; font-size: .95rem; }
-    .gkey .desc { font-size: .55rem; font-weight: 800; text-transform: uppercase; opacity: .7; }
-    .gkey:active { background: #BBDEFB; }
+    .gkey .k {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: var(--spidey-red);
+      color: #fff;
+      display: grid; place-items: center;
+      font-family: var(--display);
+      font-weight: 900;
+    }
     .close-g {
-      margin-top: 10px;
       width: 100%;
-      border: 2px solid #fff;
+      border: 2.5px solid #fff;
       border-radius: 12px;
       padding: 10px;
       font-family: var(--display);
       font-weight: 900;
-      background: var(--spidey-red);
       color: #fff;
+      background: linear-gradient(180deg, #64B5F6, var(--web-blue-deep));
       cursor: pointer;
     }
 
-    .toast {
-      position: absolute;
-      left: 50%;
-      bottom: 48px;
-      transform: translateX(-50%) translateY(20px);
-      background: rgba(26,36,48,.92);
-      color: #fff;
-      font-weight: 800;
-      font-size: .72rem;
-      padding: 8px 14px;
-      border-radius: 999px;
-      opacity: 0;
-      pointer-events: none;
-      transition: .25s;
-      z-index: 40;
-      white-space: nowrap;
-      max-width: 90%;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    /* Landscape / fullscreen: big cam + drive */
+    body.is-landscape .screen,
+    body.is-fullscreen .screen {
+      background: #0A1A33;
     }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    @media (max-width: 420px) {
-      body { padding: 8px; align-items: stretch; }
-      .stage-label { font-size: .65rem; top: 6px; }
-      .phone {
-        width: 100%;
-        height: calc(100vh - 16px);
-        max-height: none;
-        border-radius: 28px;
-        padding: 8px;
-      }
-      .screen { border-radius: 22px; }
+    body.is-landscape .team-row,
+    body.is-fullscreen .team-row { display: none; }
+    body.is-landscape .scroll,
+    body.is-fullscreen .scroll {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 10px;
+      align-items: stretch;
+      overflow: hidden;
+      padding: 8px 10px;
+    }
+    body.is-landscape .cam-block,
+    body.is-fullscreen .cam-block {
+      margin: 0;
+      height: 100%;
+      min-height: 0;
+    }
+    body.is-landscape .cam-viewport,
+    body.is-fullscreen .cam-viewport {
+      aspect-ratio: auto;
+      height: 100%;
+      min-height: 180px;
+    }
+    body.is-landscape .console,
+    body.is-fullscreen .console {
+      margin: 0;
+      overflow-y: auto;
+      max-height: 100%;
+    }
+    body.is-landscape .status-pills,
+    body.is-fullscreen .status-pills {
+      grid-column: 1 / -1;
+      margin: 0;
     }
   </style>
 </head>
-<body>
-  <div class="stage-label">Android mock · Trace-E WEB-Quarters · not published</div>
+<body class="android-app">
+  <div class="screen">
+    <header class="app-bar">
+      <div class="avatar" aria-hidden="true">T</div>
+      <div>
+        <h1>Trace-E HQ</h1>
+        <span class="sub">Spidey Friends · Control</span>
+      </div>
+    </header>
 
-  <div class="phone" role="img" aria-label="Android phone mockup of Trace-E control app">
-    <span class="side-btn pwr" aria-hidden="true"></span>
-    <span class="side-btn vol-up" aria-hidden="true"></span>
-    <span class="side-btn vol-dn" aria-hidden="true"></span>
+    <div class="team-row" aria-label="Team">
+      <div class="mini-chip spidey"><span class="dot">S</span> Spidey</div>
+      <div class="mini-chip ghost"><span class="dot">G</span> Ghost</div>
+      <div class="mini-chip spin"><span class="dot">Sp</span> Spin</div>
+    </div>
 
-    <div class="screen">
-      <div class="status-bar">
-        <span id="clock">15:10</span>
-        <div class="icons">
-          <span>LTE</span>
-          <span class="dot" title="Battery"></span>
+    <div class="scroll">
+      <div class="cam-block">
+        <div class="spk-mini" aria-hidden="true">
+          <span class="drv"></span><span class="drv lg"></span><span class="drv lg"></span><span class="drv"></span>
+        </div>
+        <div class="cam-frame">
+          <div class="bezel-dot" aria-hidden="true"></div>
+          <div class="cam-viewport" id="camBox">
+            <span class="live-pill">● LIVE CAM</span>
+            <div class="crest" aria-hidden="true">
+              <svg viewBox="0 0 200 200">
+                <path d="M100 18 L168 58 L100 100 Z" fill="#7B5EA7"/>
+                <path d="M32 58 L100 100 L100 182 L32 142 Z" fill="#E53935"/>
+                <path d="M168 58 L100 100 L100 182 L168 142 Z" fill="#1A1A1A"/>
+                <path d="M100 18 L168 58 L168 142 L100 182 L32 142 L32 58 Z"
+                      fill="none" stroke="#fff" stroke-width="6"/>
+              </svg>
+            </div>
+            <img id="liveCam" alt="ESP camera" />
+            <div class="cam-ph">WEB-STER LIVE VIEW<br />
+              <span style="font-size:.8em;opacity:.9">Set ESP IP · same Wi‑Fi</span>
+            </div>
+          </div>
+        </div>
+        <div class="spk-mini" aria-hidden="true">
+          <span class="drv"></span><span class="drv lg"></span><span class="drv lg"></span><span class="drv"></span>
         </div>
       </div>
 
-      <header class="app-bar">
-        <img class="avatar" src="assets/spidey.jpg" alt="Spidey" />
-        <div>
-          <h1>Trace-E HQ</h1>
-          <span class="sub">Spidey Friends · Control</span>
+      <div class="console">
+        <div class="holo-row">
+          <div class="holo">
+            <div class="name">Left · LM</div>
+            <div class="val" id="lm">0</div>
+          </div>
+          <div class="holo">
+            <div class="name">Right · RM</div>
+            <div class="val" id="rm">0</div>
+          </div>
         </div>
-      </header>
 
-      <div class="team-row" aria-label="Team">
-        <div class="mini-chip spidey"><img src="assets/spidey.jpg" alt="" /> Spidey</div>
-        <div class="mini-chip ghost"><img src="assets/ghost_spider.jpg" alt="" /> Ghost</div>
-        <div class="mini-chip spin"><img src="assets/spin.jpg" alt="" /> Spin</div>
+        <div class="drive-zone">
+          <div class="pads-wrap">
+            <p class="label">Web Drive · WASD</p>
+            <div class="pads" id="pads">
+              <button type="button" class="pad" data-key="w" aria-label="Forward">W</button>
+              <button type="button" class="pad" data-key="a" aria-label="Left">A</button>
+              <button type="button" class="pad" data-key="s" aria-label="Back">S</button>
+              <button type="button" class="pad" data-key="d" aria-label="Right">D</button>
+            </div>
+          </div>
+          <div class="stick-wrap">
+            <p class="label">Stick</p>
+            <div class="stick-pad" id="stickPad" aria-label="Virtual stick">
+              <div class="stick-knob" id="stickKnob"></div>
+            </div>
+            <p class="stick-label">Drag to drive</p>
+          </div>
+        </div>
+
+        <button type="button" class="gestures-btn" id="gesturesBtn" aria-pressed="false">Gestures</button>
+
+        <div class="panel talk-to">
+          <label for="talkToText">Talk to Trace</label>
+          <span class="sub">Laptop speak_server on same Wi‑Fi (not 127.0.0.1)</span>
+          <div class="row">
+            <input id="talkToText" type="text" maxlength="160" placeholder="Hey Trace-E!" />
+            <button type="button" id="talkToBtn">Send</button>
+          </div>
+          <p class="note" id="talkToNote">POST → Brain PC :8787/api/talk · chirps off</p>
+        </div>
+
+        <div class="panel talk-through">
+          <label for="ttsText">Talk through Trace</label>
+          <span class="sub">TTS on laptop → ESP amp · set Brain PC IP below</span>
+          <div class="row">
+            <input id="ttsText" type="text" maxlength="120" value="Webs up, WEB-Quarters!" />
+            <button type="button" id="speakBtn">Say!</button>
+          </div>
+          <p class="note" id="speakNote">POST → Brain PC :8787/api/speak</p>
+        </div>
+
+        <div class="esp-row" title="ESP + brain">
+          <input id="espIpInput" type="text" spellcheck="false" value="http://192.168.1.104" aria-label="ESP IP" />
+          <input id="brainIpInput" type="text" spellcheck="false" value="http://192.168.1.102:8787" aria-label="Brain PC IP" placeholder="Brain PC · http://192.168.1.102:8787" />
+          <button type="button" id="espSaveBtn">Set ESP</button>
+          <button type="button" id="brainSaveBtn">Set Brain</button>
+          <button type="button" class="flip" id="camFlipBtn" aria-pressed="true">Flip cam: ON</button>
+          <button type="button" class="fs" id="fullscreenBtn" aria-pressed="false">Fullscreen</button>
+        </div>
+        <p class="note" style="margin:6px 2px 0;color:rgba(255,255,255,.9)">Tablet + robot + laptop on the <b>same Wi‑Fi</b> (not guest/VPN). Voice needs speak_server on the laptop.</p>
       </div>
 
-      <div class="scroll">
-        <div class="cam-block">
-          <div class="spk-mini" aria-hidden="true">
-            <span class="drv"></span><span class="drv lg"></span><span class="drv lg"></span><span class="drv"></span>
-          </div>
-          <div class="cam-frame">
-            <div class="bezel-dot" aria-hidden="true"></div>
-            <div class="cam-viewport" id="camBox">
-              <span class="live-pill">● LIVE CAM</span>
-              <div class="crest" aria-hidden="true">
-                <svg viewBox="0 0 200 200">
-                  <path d="M100 18 L168 58 L100 100 Z" fill="#7B5EA7"/>
-                  <path d="M32 58 L100 100 L100 182 L32 142 Z" fill="#E53935"/>
-                  <path d="M168 58 L100 100 L100 182 L168 142 Z" fill="#1A1A1A"/>
-                  <path d="M100 18 L168 58 L168 142 L100 182 L32 142 L32 58 Z"
-                        fill="none" stroke="#fff" stroke-width="6"/>
-                </svg>
-              </div>
-              <img id="mockCam" alt="" />
-              <div class="cam-ph">WEB-STER LIVE VIEW<br />
-                <span style="font-size:.8em;opacity:.9">Connect ESP for cam</span>
-              </div>
-            </div>
-          </div>
-          <div class="spk-mini" aria-hidden="true">
-            <span class="drv"></span><span class="drv lg"></span><span class="drv lg"></span><span class="drv"></span>
-          </div>
-        </div>
-
-        <div class="console">
-          <div class="holo-row">
-            <div class="holo">
-              <div class="name">Left · LM</div>
-              <div class="val" id="lm">0</div>
-            </div>
-            <div class="holo">
-              <div class="name">Right · RM</div>
-              <div class="val" id="rm">0</div>
-            </div>
-          </div>
-
-          <div class="drive-zone">
-            <div class="pads-wrap">
-              <p class="label">Web Drive · WASD</p>
-              <div class="pads" id="pads">
-                <button type="button" class="pad" data-key="w" aria-label="Forward">W</button>
-                <button type="button" class="pad" data-key="a" aria-label="Left">A</button>
-                <button type="button" class="pad" data-key="s" aria-label="Back">S</button>
-                <button type="button" class="pad" data-key="d" aria-label="Right">D</button>
-              </div>
-            </div>
-            <div class="stick-wrap">
-              <p class="label" style="margin:0 0 6px;font-family:var(--display);font-weight:900;font-size:.72rem;color:#fff;text-transform:uppercase;text-shadow:0 1px 0 rgba(0,0,0,.25)">Stick</p>
-              <div class="stick-pad" id="stickPad" aria-label="Virtual stick">
-                <div class="stick-knob" id="stickKnob"></div>
-              </div>
-              <p class="stick-label">Drag to drive</p>
-            </div>
-          </div>
-
-          <button type="button" class="gestures-btn" id="gesturesBtn" aria-pressed="false">Gestures</button>
-
-          <div class="panel talk-to">
-            <label for="talkToText">Talk to Trace</label>
-            <span class="sub">Send a message · Trace hears you</span>
-            <div class="row">
-              <input id="talkToText" type="text" maxlength="160" placeholder="Hey Trace-E!" />
-              <button type="button" id="talkToBtn">Send</button>
-            </div>
-            <p class="note" id="talkToNote">Waiting for a message…</p>
-          </div>
-
-          <div class="panel talk-through">
-            <label for="ttsText">Talk through Trace</label>
-            <span class="sub">Says it on the ESP amp</span>
-            <div class="row">
-              <input id="ttsText" type="text" maxlength="120" value="Webs up, WEB-Quarters!" />
-              <button type="button" id="speakBtn">Say!</button>
-            </div>
-            <p class="note" id="speakNote">speak_server :8787 → ESP</p>
-          </div>
-
-          <div class="esp-row" title="ESP base URL">
-            <input id="espIpInput" type="text" spellcheck="false" value="http://192.168.1.104" />
-            <button type="button" id="espSaveBtn">Set ESP</button>
-            <button type="button" class="flip" id="camFlipBtn" aria-pressed="true">Flip cam: ON</button>
-          </div>
-        </div>
-
-        <div class="status-pills">
-          <span class="pill"><span class="led"></span> HQ online</span>
-          <span class="pill" id="motorPill"><span class="led off" id="motorLed"></span> Motors: idle</span>
-          <span class="pill" id="camPill"><span class="led warn"></span> Cam: mock</span>
-          <span class="pill" id="espPill">ESP: 192.168.1.104</span>
-        </div>
+      <div class="status-pills">
+        <span class="pill"><span class="led"></span> HQ online</span>
+        <span class="pill" id="motorPill"><span class="led off"></span> Motors: idle</span>
+        <span class="pill" id="camPill"><span class="led warn"></span> Cam: …</span>
+        <span class="pill" id="espPill">ESP: 192.168.1.104</span>
+        <span class="pill" id="brainPill">Brain: …</span>
       </div>
-
-      <div class="nav-bar" aria-hidden="true"><span></span></div>
-
-      <div class="gestures-overlay" id="gesturesOverlay" aria-hidden="true">
-        <div class="gestures-panel" role="dialog" aria-label="Gestures">
-          <h3>Gestures · Shortcuts</h3>
-          <p class="sub">Tap a move · WASD / stick stay for drive</p>
-          <div class="gesture-grid">
-            <button type="button" class="gkey" data-g="wave"><span class="k">1</span><span class="desc">Wave</span></button>
-            <button type="button" class="gkey" data-g="nod"><span class="k">2</span><span class="desc">Nod</span></button>
-            <button type="button" class="gkey" data-g="dance"><span class="k">3</span><span class="desc">Dance</span></button>
-            <button type="button" class="gkey" data-g="spin"><span class="k">4</span><span class="desc">Spin</span></button>
-            <button type="button" class="gkey" data-g="webs"><span class="k">5</span><span class="desc">Webs</span></button>
-            <button type="button" class="gkey" data-g="stop"><span class="k">X</span><span class="desc">Stop</span></button>
-            <button type="button" class="gkey" data-g="face"><span class="k">F</span><span class="desc">Face</span></button>
-            <button type="button" class="gkey" data-g="reset"><span class="k">R</span><span class="desc">Reset</span></button>
-          </div>
-          <button type="button" class="close-g" id="closeGestures">Close</button>
-        </div>
-      </div>
-
-      <div class="toast" id="toast"></div>
     </div>
   </div>
 
+  <div class="gestures-overlay" id="gesturesOverlay" aria-hidden="true">
+    <div class="gestures-panel" role="dialog" aria-label="Gestures">
+      <h3>Gestures · Shortcuts</h3>
+      <p class="sub">Tap a move · WASD / stick stay for drive</p>
+      <div class="gesture-grid">
+        <button type="button" class="gkey" data-g="wave"><span class="k">1</span><span class="desc">Wave</span></button>
+        <button type="button" class="gkey" data-g="nod"><span class="k">2</span><span class="desc">Nod</span></button>
+        <button type="button" class="gkey" data-g="dance"><span class="k">3</span><span class="desc">Dance</span></button>
+        <button type="button" class="gkey" data-g="spin"><span class="k">4</span><span class="desc">Spin</span></button>
+        <button type="button" class="gkey" data-g="webs"><span class="k">5</span><span class="desc">Webs</span></button>
+        <button type="button" class="gkey" data-g="stop"><span class="k">X</span><span class="desc">Stop</span></button>
+      </div>
+      <button type="button" class="close-g" id="closeGestures">Close</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
   <script>
-    const keys = new Set();
-    const pads = [...document.querySelectorAll('.pad')];
-    const lm = document.getElementById('lm');
-    const rm = document.getElementById('rm');
-    const motorLed = document.getElementById('motorLed');
-    const motorPill = document.getElementById('motorPill');
-    const toast = document.getElementById('toast');
-    const camBox = document.getElementById('camBox');
-    const mockCam = document.getElementById('mockCam');
-    let camFlip = 'v';
-    let espBase = 'http://192.168.1.104';
+(function () {
+  const bridge = window.TraceEAndroid || null;
+  const CHIRPS_OFF = true; // never chirp from drive / talk UI
 
-    function showToast(msg) {
-      toast.textContent = msg;
-      toast.classList.add('show');
-      clearTimeout(showToast._t);
-      showToast._t = setTimeout(() => toast.classList.remove('show'), 1600);
+  function storeGet(k, fallback) {
+    try { return localStorage.getItem(k) || fallback; } catch (_) { return fallback; }
+  }
+  function storeSet(k, v) {
+    try { localStorage.setItem(k, v); } catch (_) {}
+  }
+
+  const DEFAULT_BRAIN = (bridge && bridge.getDefaultBrain && bridge.getDefaultBrain()) || 'http://192.168.1.102:8787';
+  const DEFAULT_ESP = (bridge && bridge.getDefaultEsp && bridge.getDefaultEsp()) || 'http://192.168.1.104';
+
+  function normalizeBrain(v, fallback) {
+    let x = (v || '').trim();
+    if (!x) return fallback || DEFAULT_BRAIN;
+    if (!/^https?:\/\//i.test(x)) x = 'http://' + x;
+    x = x.replace(/\/$/, '');
+    if (/127\.0\.0\.1|localhost/i.test(x)) return null;
+    const hostport = x.replace(/^https?:\/\//i, '');
+    if (!hostport.includes(':')) x = x + ':8787';
+    return x;
+  }
+
+  let espBase = storeGet('trace_e_esp', DEFAULT_ESP).replace(/\/$/, '');
+  let brainStored = storeGet('trace_e_brain', DEFAULT_BRAIN);
+  let brainBase = normalizeBrain(brainStored, DEFAULT_BRAIN) || DEFAULT_BRAIN;
+  if (/127\.0\.0\.1|localhost/i.test(brainStored || '')) {
+    brainBase = DEFAULT_BRAIN;
+    storeSet('trace_e_brain', brainBase);
+  }
+
+  const keys = new Set();
+  const pads = [...document.querySelectorAll('.pad')];
+  const lm = document.getElementById('lm');
+  const rm = document.getElementById('rm');
+  const motorPill = document.getElementById('motorPill');
+  const toast = document.getElementById('toast');
+  const camBox = document.getElementById('camBox');
+  const liveCam = document.getElementById('liveCam');
+  let camFlip = storeGet('trace_e_cam_flip', 'v');
+  let lastDrivePost = 0;
+  let lastLR = [0, 0];
+
+  document.getElementById('espIpInput').value = espBase;
+  document.getElementById('brainIpInput').value = brainBase;
+  document.getElementById('espPill').textContent = 'ESP: ' + espBase.replace(/^https?:\/\//, '');
+  document.getElementById('brainPill').textContent = 'Brain: ' + brainBase.replace(/^https?:\/\//, '');
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('show'), 1600);
+  }
+
+  function espHost() {
+    return espBase.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+  }
+
+  function driveUrl() {
+    return 'http://' + espHost() + ':8765/api/drive';
+  }
+
+  function postDriveLR(L, R) {
+    const now = Date.now();
+    if (now - lastDrivePost < 40 && L === lastLR[0] && R === lastLR[1] && (L !== 0 || R !== 0)) return;
+    lastDrivePost = now;
+    lastLR = [L, R];
+    // Direct to ESP :8765 — zero-lag path (no brain hop for motors)
+    const q = new URLSearchParams({ left: String(L), right: String(R) });
+    const url = driveUrl() + '?' + q.toString();
+    fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' }).catch(() => {});
+    // Chirps stay off — do not call /api/chirp
+    void CHIRPS_OFF;
+  }
+
+  // Kid-friendly stick: large deadzone, steer expo, soft roll-steer
+  const STICK_DEAD = 0.28;
+  const STEER_EXPO = 2.2;
+  const THROTTLE_EXPO = 1.35;
+  const STEER_GAIN_ROLL = 0.38;
+  const STEER_GAIN_SPIN = 0.50;
+  const FWD_GAIN = 0.90;
+  const SPIN = 28;
+
+  function applyDeadzone(v, dz) {
+    if (Math.abs(v) < dz) return 0;
+    const sign = v < 0 ? -1 : 1;
+    return sign * (Math.abs(v) - dz) / (1 - dz);
+  }
+  function expoCurve(v, e) {
+    if (v === 0) return 0;
+    const sign = v < 0 ? -1 : 1;
+    return sign * Math.pow(Math.abs(v), e);
+  }
+
+  function syncMotors() {
+    // Chassis-corrected: A = physical left, D = physical right; strong curves; slow spin
+    let L = 0, R = 0;
+    if (keys.has('w')) { L = 100; R = 100; }
+    if (keys.has('s')) { L = -100; R = -100; }
+    if (keys.has('a') && !keys.has('w') && !keys.has('s')) { L = SPIN; R = -SPIN; }
+    else if (keys.has('d') && !keys.has('w') && !keys.has('s')) { L = -SPIN; R = SPIN; }
+    else if (keys.has('a') && (keys.has('w') || keys.has('s'))) {
+      if (keys.has('w')) { L = 100; R = 8; }
+      else { L = -100; R = -8; }
+    } else if (keys.has('d') && (keys.has('w') || keys.has('s'))) {
+      if (keys.has('w')) { L = 8; R = 100; }
+      else { L = -8; R = -100; }
     }
-
-    function syncMotors() {
-      let L = 0, R = 0;
-      if (keys.has('w')) { L = 70; R = 70; }
-      if (keys.has('s')) { L = -70; R = -70; }
-      if (keys.has('a')) { L -= 45; R += 45; }
-      if (keys.has('d')) { L += 45; R -= 45; }
-      if (stick.mag > 0.12) {
-        const fwd = -stick.y * 80;
-        const turn = stick.x * 55;
-        L = Math.round(fwd + turn);
-        R = Math.round(fwd - turn);
+    if (stick.mag > STICK_DEAD) {
+      let sx = expoCurve(applyDeadzone(stick.x, STICK_DEAD), STEER_EXPO);
+      let sy = expoCurve(applyDeadzone(stick.y, STICK_DEAD * 0.85), THROTTLE_EXPO);
+      const fwd = -sy * 100 * FWD_GAIN;
+      const rolling = Math.abs(fwd) >= 18;
+      const steerGain = rolling ? STEER_GAIN_ROLL : STEER_GAIN_SPIN;
+      const turn = -sx * 100 * steerGain;
+      L = Math.round(fwd + turn);
+      R = Math.round(fwd - turn);
+      if (!rolling) {
+        const scale = SPIN / 100;
+        L = Math.round(L * scale);
+        R = Math.round(R * scale);
       }
-      L = Math.max(-100, Math.min(100, L));
-      R = Math.max(-100, Math.min(100, R));
-      lm.textContent = L;
-      rm.textContent = R;
-      const moving = L !== 0 || R !== 0;
-      motorLed.className = 'led' + (moving ? '' : ' off');
-      motorPill.innerHTML = '<span class="led' + (moving ? '' : ' off') + '"></span> Motors: ' + (moving ? 'drive' : 'idle');
     }
+    L = Math.max(-100, Math.min(100, L));
+    R = Math.max(-100, Math.min(100, R));
+    lm.textContent = L;
+    rm.textContent = R;
+    const moving = L !== 0 || R !== 0;
+    motorPill.innerHTML = '<span class="led' + (moving ? '' : ' off') + '"></span> Motors: ' +
+      (moving ? (L + '/' + R) : 'idle');
+    postDriveLR(L, R);
+  }
 
-    function down(k) { keys.add(k); pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key))); syncMotors(); }
-    function up(k) { keys.delete(k); pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key))); syncMotors(); }
-
-    pads.forEach(p => {
-      const k = p.dataset.key;
-      p.addEventListener('pointerdown', e => { e.preventDefault(); p.setPointerCapture(e.pointerId); down(k); });
-      p.addEventListener('pointerup', () => up(k));
-      p.addEventListener('pointercancel', () => up(k));
-    });
-
-    window.addEventListener('keydown', e => {
-      const k = e.key.toLowerCase();
-      if ('wasd'.includes(k)) { e.preventDefault(); down(k); }
-    });
-    window.addEventListener('keyup', e => {
-      const k = e.key.toLowerCase();
-      if ('wasd'.includes(k)) { e.preventDefault(); up(k); }
-    });
-
-    // Virtual stick
-    const stickPad = document.getElementById('stickPad');
-    const stickKnob = document.getElementById('stickKnob');
-    const stick = { x: 0, y: 0, mag: 0, active: false };
-    const maxR = 34;
-
-    function setStick(clientX, clientY) {
-      const r = stickPad.getBoundingClientRect();
-      let dx = clientX - (r.left + r.width / 2);
-      let dy = clientY - (r.top + r.height / 2);
-      const mag = Math.hypot(dx, dy);
-      if (mag > maxR) { dx = dx / mag * maxR; dy = dy / mag * maxR; }
-      stick.x = dx / maxR;
-      stick.y = dy / maxR;
-      stick.mag = Math.min(1, mag / maxR);
-      stickKnob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
-      syncMotors();
-    }
-    function resetStick() {
-      stick.x = stick.y = stick.mag = 0;
-      stickKnob.style.transform = 'translate(-50%, -50%)';
-      syncMotors();
-    }
-    stickPad.addEventListener('pointerdown', e => {
-      stick.active = true;
-      stickPad.setPointerCapture(e.pointerId);
-      setStick(e.clientX, e.clientY);
-    });
-    stickPad.addEventListener('pointermove', e => { if (stick.active) setStick(e.clientX, e.clientY); });
-    stickPad.addEventListener('pointerup', () => { stick.active = false; resetStick(); });
-    stickPad.addEventListener('pointercancel', () => { stick.active = false; resetStick(); });
-
-    // Gestures
-    const gesturesBtn = document.getElementById('gesturesBtn');
-    const gesturesOverlay = document.getElementById('gesturesOverlay');
-    function setGestures(on) {
-      gesturesBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      gesturesBtn.textContent = on ? 'Gestures · ON' : 'Gestures';
-      gesturesOverlay.classList.toggle('open', on);
-      gesturesOverlay.setAttribute('aria-hidden', on ? 'false' : 'true');
-    }
-    gesturesBtn.addEventListener('click', () => setGestures(gesturesBtn.getAttribute('aria-pressed') !== 'true'));
-    document.getElementById('closeGestures').addEventListener('click', () => setGestures(false));
-    document.querySelectorAll('.gkey').forEach(btn => {
-      btn.addEventListener('click', () => {
-        showToast('Gesture: ' + btn.dataset.g);
-        setGestures(false);
-      });
-    });
-
-    // Talk panels (mock)
-    document.getElementById('talkToBtn').addEventListener('click', () => {
-      const msg = (document.getElementById('talkToText').value || '').trim();
-      const note = document.getElementById('talkToNote');
-      if (!msg) { note.textContent = 'Type a message for Trace first.'; return; }
-      note.textContent = 'Mock: Trace heard “' + msg.slice(0, 40) + '”';
-      showToast('Talk to Trace (mock)');
-    });
-    document.getElementById('speakBtn').addEventListener('click', () => {
-      const msg = (document.getElementById('ttsText').value || '').trim();
-      const note = document.getElementById('speakNote');
-      if (!msg) { note.textContent = 'Type words for Trace to say.'; return; }
-      note.textContent = 'Mock say → ESP amp: “' + msg.slice(0, 36) + '”';
-      showToast('Talk through Trace (mock)');
-    });
-
-    // ESP + flip
-    const camFlipBtn = document.getElementById('camFlipBtn');
-    const modes = ['off', 'v', '180'];
-    function applyFlip() {
-      camBox.classList.remove('flip-v', 'flip-180');
-      if (camFlip === 'v') camBox.classList.add('flip-v');
-      if (camFlip === '180') camBox.classList.add('flip-180');
-      const label = camFlip === 'off' ? 'OFF' : (camFlip === '180' ? '180°' : 'ON');
-      camFlipBtn.textContent = 'Flip cam: ' + label;
-      camFlipBtn.setAttribute('aria-pressed', camFlip === 'off' ? 'false' : 'true');
-    }
-    camFlipBtn.addEventListener('click', () => {
-      camFlip = modes[(modes.indexOf(camFlip) + 1) % modes.length];
-      applyFlip();
-      showToast('Cam flip: ' + camFlip);
-    });
-    applyFlip();
-
-    document.getElementById('espSaveBtn').addEventListener('click', () => {
-      let v = (document.getElementById('espIpInput').value || '').trim();
-      if (v && !/^https?:\/\//i.test(v)) v = 'http://' + v;
-      espBase = v.replace(/\/$/, '') || 'http://192.168.1.104';
-      document.getElementById('espIpInput').value = espBase;
-      document.getElementById('espPill').textContent = 'ESP: ' + espBase.replace(/^https?:\/\//, '');
-      tryLoadCam();
-      showToast('ESP set');
-    });
-
-    function tryLoadCam() {
-      const camPill = document.getElementById('camPill');
-      // Prefer brain proxy path later; direct stream for mock probe
-      const url = espBase + ':82/stream';
-      mockCam.onload = () => {
-        camBox.classList.add('live');
-        camPill.innerHTML = '<span class="led"></span> Cam: live';
-      };
-      mockCam.onerror = () => {
-        camBox.classList.remove('live');
-        camPill.innerHTML = '<span class="led warn"></span> Cam: offline (mock OK)';
-      };
-      // Don't hammer ESP in mock — only attempt once; UI stays useful offline
-      mockCam.src = '';
-      camPill.innerHTML = '<span class="led warn"></span> Cam: mock · ESP ' + espBase.replace(/^https?:\/\//, '');
-    }
-
-    // Clock
-    function tickClock() {
-      const d = new Date();
-      document.getElementById('clock').textContent =
-        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-    }
-    tickClock();
-    setInterval(tickClock, 30000);
+  function down(k) {
+    keys.add(k);
+    pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key)));
     syncMotors();
+  }
+  function up(k) {
+    keys.delete(k);
+    pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key)));
+    syncMotors();
+  }
+
+  pads.forEach(p => {
+    const k = p.dataset.key;
+    p.addEventListener('pointerdown', e => { e.preventDefault(); p.setPointerCapture(e.pointerId); down(k); });
+    p.addEventListener('pointerup', () => up(k));
+    p.addEventListener('pointercancel', () => up(k));
+  });
+
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if ('wasd'.includes(k)) { e.preventDefault(); down(k); }
+  });
+  window.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if ('wasd'.includes(k)) { e.preventDefault(); up(k); }
+  });
+  window.addEventListener('blur', () => {
+    keys.clear();
+    pads.forEach(p => p.classList.remove('active'));
+    postDriveLR(0, 0);
+    syncMotors();
+  });
+
+  const stickPad = document.getElementById('stickPad');
+  const stickKnob = document.getElementById('stickKnob');
+  const stick = { x: 0, y: 0, mag: 0, active: false };
+  const maxR = 34;
+
+  function setStick(clientX, clientY) {
+    const r = stickPad.getBoundingClientRect();
+    let dx = clientX - (r.left + r.width / 2);
+    let dy = clientY - (r.top + r.height / 2);
+    const mag = Math.hypot(dx, dy);
+    if (mag > maxR) { dx = dx / mag * maxR; dy = dy / mag * maxR; }
+    stick.x = dx / maxR;
+    stick.y = dy / maxR;
+    stick.mag = Math.min(1, mag / maxR);
+    stickKnob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+    syncMotors();
+  }
+  function resetStick() {
+    stick.x = stick.y = stick.mag = 0;
+    stickKnob.style.transform = 'translate(-50%, -50%)';
+    syncMotors();
+  }
+  stickPad.addEventListener('pointerdown', e => {
+    stick.active = true;
+    stickPad.setPointerCapture(e.pointerId);
+    setStick(e.clientX, e.clientY);
+  });
+  stickPad.addEventListener('pointermove', e => { if (stick.active) setStick(e.clientX, e.clientY); });
+  stickPad.addEventListener('pointerup', () => { stick.active = false; resetStick(); });
+  stickPad.addEventListener('pointercancel', () => { stick.active = false; resetStick(); });
+
+  // ESP failsafe keepalive while held
+  setInterval(() => {
+    if (keys.size || stick.mag > STICK_DEAD) syncMotors();
+  }, 200);
+
+  const gesturesBtn = document.getElementById('gesturesBtn');
+  const gesturesOverlay = document.getElementById('gesturesOverlay');
+  function setGestures(on) {
+    gesturesBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    gesturesBtn.textContent = on ? 'Gestures · ON' : 'Gestures';
+    gesturesOverlay.classList.toggle('open', on);
+    gesturesOverlay.setAttribute('aria-hidden', on ? 'false' : 'true');
+  }
+  gesturesBtn.addEventListener('click', () => setGestures(gesturesBtn.getAttribute('aria-pressed') !== 'true'));
+  document.getElementById('closeGestures').addEventListener('click', () => setGestures(false));
+  document.querySelectorAll('.gkey').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.g === 'stop') postDriveLR(0, 0);
+      showToast('Gesture: ' + btn.dataset.g);
+      setGestures(false);
+    });
+  });
+
+  async function postJson(path, body) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const r = await fetch(brainBase + path, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      const text = await r.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch (_) { data = { raw: text }; }
+      return { ok: r.ok, status: r.status, data };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  function brainUnreachableMsg() {
+    return 'Brain unreachable at ' + brainBase +
+      ' — on the laptop run: python desktop/speak_server.py · same Wi‑Fi · Set Brain to laptop LAN IP (not 127.0.0.1)';
+  }
+
+  document.getElementById('talkToBtn').addEventListener('click', async () => {
+    const msg = (document.getElementById('talkToText').value || '').trim();
+    const note = document.getElementById('talkToNote');
+    if (!msg) { note.textContent = 'Type a message for Trace first.'; return; }
+    if (/127\.0\.0\.1|localhost/i.test(brainBase)) {
+      note.textContent = 'Brain cannot be 127.0.0.1 on a tablet. Set Brain to the laptop LAN IP.';
+      showToast('Fix Brain IP');
+      return;
+    }
+    note.textContent = 'Sending to ' + brainBase + '/api/talk …';
+    try {
+      const { ok, data } = await postJson('/api/talk', { text: msg, esp: espBase, chirp: false, mode: 'off' });
+      if (ok) {
+        note.textContent = 'Trace heard: “' + msg.slice(0, 40) + '”';
+        showToast('Talk to Trace');
+      } else {
+        note.textContent = 'Brain HTTP error — is speak_server running at ' + brainBase + '?';
+        showToast('Brain offline');
+      }
+      void data;
+    } catch (_) {
+      note.textContent = brainUnreachableMsg();
+      showToast('Brain unreachable');
+    }
+  });
+
+  document.getElementById('speakBtn').addEventListener('click', async () => {
+    const msg = (document.getElementById('ttsText').value || '').trim();
+    const note = document.getElementById('speakNote');
+    if (!msg) { note.textContent = 'Type words for Trace to say.'; return; }
+    if (/127\.0\.0\.1|localhost/i.test(brainBase)) {
+      note.textContent = 'Brain cannot be 127.0.0.1 on a tablet. Set Brain to the laptop LAN IP.';
+      showToast('Fix Brain IP');
+      return;
+    }
+    note.textContent = 'POST ' + brainBase + '/api/speak …';
+    try {
+      const { ok, data } = await postJson('/api/speak', { text: msg, esp: espBase });
+      if (ok) {
+        const where = (data && data.played_on) || 'brain';
+        note.textContent = 'Said on ' + where + ': “' + msg.slice(0, 36) + '”';
+        showToast('Talk through Trace');
+      } else {
+        note.textContent = 'Speak failed at ' + brainBase + ' — check speak_server + ESP amp.';
+        showToast('Speak failed');
+      }
+    } catch (_) {
+      note.textContent = brainUnreachableMsg();
+      showToast('Brain unreachable');
+    }
+  });
+
+  const camFlipBtn = document.getElementById('camFlipBtn');
+  const modes = ['off', 'v', '180'];
+  function applyFlip() {
+    camBox.classList.remove('flip-v', 'flip-180');
+    if (camFlip === 'v') camBox.classList.add('flip-v');
+    if (camFlip === '180') camBox.classList.add('flip-180');
+    const label = camFlip === 'off' ? 'OFF' : (camFlip === '180' ? '180°' : 'ON');
+    camFlipBtn.textContent = 'Flip cam: ' + label;
+    camFlipBtn.setAttribute('aria-pressed', camFlip === 'off' ? 'false' : 'true');
+    storeSet('trace_e_cam_flip', camFlip);
+  }
+  camFlipBtn.addEventListener('click', () => {
+    camFlip = modes[(modes.indexOf(camFlip) + 1) % modes.length];
+    applyFlip();
+    showToast('Cam flip: ' + camFlip);
+  });
+  applyFlip();
+
+  const fsBtn = document.getElementById('fullscreenBtn');
+  function syncFsUi() {
+    const on = !!(document.fullscreenElement || document.body.classList.contains('is-fullscreen'));
+    fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    fsBtn.textContent = on ? 'Exit full' : 'Fullscreen';
+  }
+  fsBtn.addEventListener('click', async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        document.body.classList.add('is-fullscreen');
+        if (bridge && bridge.setFullscreen) bridge.setFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        document.body.classList.remove('is-fullscreen');
+        if (bridge && bridge.setFullscreen) bridge.setFullscreen(false);
+      }
+    } catch (_) {
+      document.body.classList.toggle('is-fullscreen');
+      if (bridge && bridge.setFullscreen) {
+        bridge.setFullscreen(document.body.classList.contains('is-fullscreen'));
+      }
+    }
+    syncFsUi();
+  });
+  document.addEventListener('fullscreenchange', syncFsUi);
+
+  function normalizeBase(v, fallback) {
+    let x = (v || '').trim();
+    if (x && !/^https?:\/\//i.test(x)) x = 'http://' + x;
+    return (x.replace(/\/$/, '') || fallback);
+  }
+
+  document.getElementById('espSaveBtn').addEventListener('click', () => {
+    espBase = normalizeBase(document.getElementById('espIpInput').value, 'http://192.168.1.104');
+    document.getElementById('espIpInput').value = espBase;
+    document.getElementById('espPill').textContent = 'ESP: ' + espBase.replace(/^https?:\/\//, '');
+    storeSet('trace_e_esp', espBase);
+    tryLoadCam();
+    showToast('ESP set');
+  });
+
+  document.getElementById('brainSaveBtn').addEventListener('click', () => {
+    const raw = document.getElementById('brainIpInput').value;
+    const next = normalizeBrain(raw, DEFAULT_BRAIN);
+    if (!next) {
+      showToast('No localhost — use laptop LAN IP');
+      document.getElementById('speakNote').textContent =
+        'Tablet cannot reach 127.0.0.1. Enter laptop Wi‑Fi IP, e.g. 192.168.1.102:8787';
+      return;
+    }
+    brainBase = next;
+    document.getElementById('brainIpInput').value = brainBase;
+    document.getElementById('brainPill').textContent = 'Brain: ' + brainBase.replace(/^https?:\/\//, '');
+    storeSet('trace_e_brain', brainBase);
+    showToast('Brain set');
+  });
+
+  function streamUrl() {
+    if (bridge && bridge.getMjpegProxyUrl) {
+      try { return bridge.getMjpegProxyUrl(espBase); } catch (_) {}
+    }
+    return 'http://' + espHost() + ':82/stream';
+  }
+
+  function tryLoadCam() {
+    const camPill = document.getElementById('camPill');
+    const url = streamUrl() + (streamUrl().indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+    camBox.classList.remove('live');
+    liveCam.onload = () => {
+      camBox.classList.add('live');
+      camPill.innerHTML = '<span class="led"></span> Cam: live';
+    };
+    liveCam.onerror = () => {
+      camBox.classList.remove('live');
+      camPill.innerHTML = '<span class="led warn"></span> Cam: offline';
+    };
+    liveCam.src = url;
+    camPill.innerHTML = '<span class="led warn"></span> Cam: connecting…';
+  }
+
+  function syncOrientation() {
+    const landscape = window.matchMedia('(orientation: landscape)').matches;
+    document.body.classList.toggle('is-landscape', landscape);
+    if (landscape) document.body.classList.add('is-fullscreen');
+    else if (!document.fullscreenElement) document.body.classList.remove('is-fullscreen');
+    syncFsUi();
+  }
+  window.addEventListener('resize', syncOrientation);
+  window.addEventListener('orientationchange', syncOrientation);
+  syncOrientation();
+
+  tryLoadCam();
+  syncMotors();
+})();
   </script>
 </body>
 </html>

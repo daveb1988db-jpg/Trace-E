@@ -1,11 +1,13 @@
-# Trace-E Android (scaffold)
+# Trace-E Android
 
-Open this folder in Android Studio to build a debug APK.
+Open this folder in Android Studio, or build with Gradle:
 
-See repo root [README_ANDROID.md](../../README_ANDROID.md) for connection diagram, MJPEG proxy notes, and GitHub release plan (do not publish until mock UI is approved).
+```bash
+./gradlew assembleRelease
+```
 
-Quick path:
-1. Approve `desktop/android_mock.html`
-2. Open `android/TraceE` in Android Studio
-3. Sync Gradle → Run on device
-4. Set ESP IP (default `192.168.1.104`) and PC brain `:8787` if using Talk features
+APK: `app/build/outputs/apk/release/app-release.apk`
+
+Install steps and LAN diagram: [README_ANDROID.md](../../README_ANDROID.md)
+
+Defaults: ESP `192.168.1.104`, cam `:82/stream`, drive `:8765`, brain speak_server `:8787`.

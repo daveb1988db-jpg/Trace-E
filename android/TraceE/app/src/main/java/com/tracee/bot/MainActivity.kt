@@ -1,27 +1,44 @@
 package com.tracee.bot
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.view.View
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 /**
  * Trace-E WEB-Quarters shell: loads local assets/www control UI.
- * MJPEG is served through [MjpegProxyServer] so WebView gets a stable
- * same-origin stream URL instead of stalling on ESP multipart.
+ * MJPEG via [MjpegProxyServer]; drive hits ESP :8765 directly from JS.
+ * [TraceBridge.probeEsp] uses HttpURLConnection so file:// WebView is not blocked by CORS.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private var proxy: MjpegProxyServer? = null
+    private val io = Executors.newCachedThreadPool()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         webView = WebView(this)
         setContentView(webView)
 
@@ -32,24 +49,82 @@ class MainActivity : AppCompatActivity() {
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            cacheMode = WebSettings.LOAD_DEFAULT
+            cacheMode = WebSettings.LOAD_NO_CACHE
             allowFileAccess = true
-            // Needed so file:// HQ page can call LAN brain / proxy
+            @Suppress("DEPRECATION")
             allowUniversalAccessFromFileURLs = true
+            @Suppress("DEPRECATION")
             allowFileAccessFromFileURLs = true
+            blockNetworkLoads = false
+            blockNetworkImage = false
         }
         webView.webChromeClient = WebChromeClient()
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = false
+        }
         webView.addJavascriptInterface(TraceBridge(), "TraceEAndroid")
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-        // Mobile HQ page (copy of desktop android_mock / slim HQ)
+        applyOrientationUi(resources.configuration.orientation)
         webView.loadUrl("file:///android_asset/www/index.html")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyOrientationUi(newConfig.orientation)
+    }
+
+    private fun applyOrientationUi(orientation: Int) {
+        val landscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        if (landscape) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     override fun onDestroy() {
         proxy?.stop()
+        io.shutdownNow()
         webView.destroy()
         super.onDestroy()
+    }
+
+    private fun hostOnly(espBase: String): String {
+        return espBase
+            .removePrefix("http://")
+            .removePrefix("https://")
+            .trimEnd('/')
+            .substringBefore('/')
+            .substringBefore(':')
+    }
+
+    private fun httpProbe(url: String, timeoutMs: Int): Pair<Boolean, String> {
+        return try {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                instanceFollowRedirects = true
+                requestMethod = "GET"
+                setRequestProperty("Connection", "close")
+            }
+            val code = conn.responseCode
+            val ok = code in 200..299
+            val snippet = try {
+                (if (ok) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.use { it.readText().take(120) } ?: ""
+            } catch (_: Exception) { "" }
+            conn.disconnect()
+            ok to "HTTP $code $snippet".trim()
+        } catch (e: Exception) {
+            false to (e.message ?: "error")
+        }
     }
 
     inner class TraceBridge {
@@ -68,13 +143,75 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun getDefaultBrain(): String = DEFAULT_BRAIN
+
+        /** Sync probe for Connect button — returns JSON string. */
+        @JavascriptInterface
+        fun probeEsp(espBase: String?): String {
+            val base = (espBase?.ifBlank { null } ?: DEFAULT_ESP_BASE).trim().trimEnd('/')
+            val host = hostOnly(base)
+            val statusUrl = "http://$host:8765/api/status"
+            val streamUrl = "http://$host:82/stream"
+            val (statusOk, statusDetail) = httpProbe(statusUrl, 2500)
+            // Stream: just open connection / read a few bytes (MJPEG never "ends")
+            val (streamOk, streamDetail) = try {
+                val conn = (URL(streamUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 3000
+                    readTimeout = 3000
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "multipart/x-mixed-replace,*/*")
+                }
+                val code = conn.responseCode
+                val ok = code in 200..299
+                if (ok) {
+                    try { conn.inputStream.read(ByteArray(64)) } catch (_: Exception) {}
+                }
+                conn.disconnect()
+                ok to "HTTP $code"
+            } catch (e: Exception) {
+                false to (e.message ?: "error")
+            }
+            proxy?.updateUpstream(streamUrl)
+            return JSONObject()
+                .put("ok", statusOk && streamOk)
+                .put("host", host)
+                .put("statusOk", statusOk)
+                .put("statusDetail", statusDetail)
+                .put("statusUrl", statusUrl)
+                .put("streamOk", streamOk)
+                .put("streamDetail", streamDetail)
+                .put("streamUrl", streamUrl)
+                .put("wifiOk", isOnWifi())
+                .toString()
+        }
+
+        @JavascriptInterface
+        fun isOnWifi(): Boolean {
+            return try {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val net = cm.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(net) ?: return false
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun setFullscreen(on: Boolean) {
+            runOnUiThread {
+                requestedOrientation = if (on) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                }
+            }
+        }
     }
 
     companion object {
-        /** Match current Trace / peanut LAN defaults — editable in UI. */
         const val DEFAULT_ESP_BASE = "http://192.168.1.104"
         const val DEFAULT_ESP_STREAM = "http://192.168.1.104:82/stream"
-        /** PC running desktop/speak_server.py — set to your PC LAN IP when testing. */
-        const val DEFAULT_BRAIN = "http://192.168.1.100:8787"
+        /** PC running desktop/speak_server.py — editable in UI (never 127.0.0.1 on tablet). */
+        const val DEFAULT_BRAIN = "http://192.168.1.102:8787"
     }
 }

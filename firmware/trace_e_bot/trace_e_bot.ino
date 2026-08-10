@@ -46,7 +46,7 @@
 #endif
 
 static const char *MODEL_ID = "trace-e";
-static const char *MIC_FW_TAG = "trace-e-drive-cam-2";
+static const char *MIC_FW_TAG = "trace-e-amp-tts-3";
 static const char *FW_NAME = "Trace-E Bot";
 
 static const unsigned long DRIVE_FAILSAFE_MS = 450;
@@ -113,7 +113,11 @@ static String statusJson() {
   body += "/capture\",";
   body += "\"drive\":\"http://";
   body += ip;
-  body += ":8765/api/drive\"";
+  body += ":8765/api/drive\",";
+  body += "\"volume\":";
+  body += String(ampVolumeGet());
+  body += ",";
+  body += "\"amp\":true";
   body += "}";
   return body;
 }
@@ -284,7 +288,7 @@ static bool initCamera() {
   return true;
 }
 
-/** Dedicated :82 MJPEG — non-blocking header drain (peanut pattern). */
+/** Dedicated :82 MJPEG — drop dead clients fast so accept() isn't wedged. */
 static void streamTask(void *) {
   streamServer.begin();
   streamServer.setNoDelay(true);
@@ -330,8 +334,11 @@ static void streamTask(void *) {
                    "Connection: close\r\n\r\n"));
     g_camStreaming = true;
     unsigned long lastOk = millis();
+    unsigned long streamStarted = millis();
     while (client.connected()) {
-      if ((millis() - lastOk) > 4000UL) break;
+      // Cap a single session so a wedged proxy can't starve new browsers
+      if ((millis() - streamStarted) > 120000UL) break;
+      if ((millis() - lastOk) > 2500UL) break;
       driveFailsafeTick();
       camera_fb_t *fb = esp_camera_fb_get();
       if (!fb) {
@@ -352,10 +359,13 @@ static void streamTask(void *) {
       }
       esp_camera_fb_return(fb);
       if (!ok || !client.connected()) break;
-      vTaskDelay(pdMS_TO_TICKS(5));
+      // Yield so drive/WiFi stay responsive; ~15–20 fps max
+      vTaskDelay(pdMS_TO_TICKS(15));
     }
     g_camStreaming = false;
     client.stop();
+    // Drain any backlog connection that piled up while we were busy
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 
@@ -435,12 +445,13 @@ void setup() {
   ampRegisterRoutes(driveSrv);
   driveSrv.begin();
 
-  xTaskCreatePinnedToCore(driveBridgeTask, "drive8765", 6144, nullptr, 4, nullptr, 1);
+  // Larger stack: play_wav / play_url run inside driveSrv.handleClient() on this task
+  xTaskCreatePinnedToCore(driveBridgeTask, "drive8765", 12288, nullptr, 4, nullptr, 1);
   xTaskCreatePinnedToCore(streamTask, "mjpeg82", 10240, nullptr, 2, nullptr, 0);
 
   Serial.println("HTTP :80 /api/status /capture");
   Serial.println("Drive :8765 /api/drive /capture /api/reboot");
-  Serial.println("Amp   :8765 /api/play_wav /api/play_url /api/stop_audio");
+  Serial.println("Amp   :8765 /api/play_wav /api/play_url /api/stop_audio /api/volume");
   Serial.println("Cam   :82/stream");
   if (g_wifiOk) {
     Serial.printf("Open http://%s/api/status\n", g_ip.c_str());

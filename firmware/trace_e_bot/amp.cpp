@@ -101,6 +101,14 @@ void ampStop() {
   Serial.println("amp: stop_audio — I2S off (silent)");
 }
 
+int ampVolumeGet() { return g_ampVolume; }
+
+void ampVolumeSet(int v) {
+  if (v < 0) v = 0;
+  if (v > 150) v = 150;
+  g_ampVolume = v;
+}
+
 static bool parseWav(const uint8_t *hdr, size_t len, uint16_t *channels, uint32_t *rate,
                      uint16_t *bits, uint32_t *dataOffset, uint32_t *dataBytes) {
   if (len < 44) return false;
@@ -151,7 +159,8 @@ bool ampPlayWavBuffer(const uint8_t *wav, size_t len) {
   }
   const int16_t *pcm = (const int16_t *)(wav + dataOff);
   const size_t frames = (dataBytes / sizeof(int16_t)) / channels;
-  Serial.printf("amp play %u Hz ch=%u frames=%u\n", (unsigned)rate, channels, (unsigned)frames);
+  Serial.printf("amp play %u Hz ch=%u frames=%u vol=%d\n",
+                (unsigned)rate, channels, (unsigned)frames, g_ampVolume);
   i2sSilence(48);
   int16_t out[AMP_WRITE_FRAMES * 2];
   size_t done = 0;
@@ -165,7 +174,6 @@ bool ampPlayWavBuffer(const uint8_t *wav, size_t len) {
         l = pcm[(done + i) * 2];
         r = pcm[(done + i) * 2 + 1];
       }
-      // Apply software volume (100 = unity)
       int32_t lv = ((int32_t)l * g_ampVolume) / 100;
       int32_t rv = ((int32_t)r * g_ampVolume) / 100;
       if (lv > 32767) lv = 32767;
@@ -216,6 +224,8 @@ static bool playUrl(const String &url) {
     }
   }
   http.end();
+  Serial.printf("amp play_url got=%u RIFF=%d\n", (unsigned)got,
+                (got >= 4 && buf[0] == 'R' && buf[1] == 'I' && buf[2] == 'F' && buf[3] == 'F'));
   g_playBusy = true;
   bool ok = ampPlayWavBuffer(buf, got);
   g_playBusy = false;
@@ -236,15 +246,81 @@ static void handlePlayUrl() {
   String url;
   if (s.hasArg("url")) url = s.arg("url");
   if (url.length() < 8) {
-    s.send(400, "application/json", "{\"ok\":false,\"error\":\"url required\"}");
+    s.send(400, "application/json", "{\"ok\":false,\"error\":\"url required\",\"played\":false}");
     return;
   }
-  s.send(200, "application/json", "{\"ok\":true,\"queued\":true}");
-  playUrl(url);
+  // Play FIRST, then ACK — avoids false 200 while amp never spoke
+  g_playBusy = true;
+  bool ok = playUrl(url);
+  g_playBusy = false;
+  if (ok) {
+    s.send(200, "application/json", "{\"ok\":true,\"played\":true,\"via\":\"play_url\"}");
+  } else {
+    s.send(502, "application/json", "{\"ok\":false,\"error\":\"play_url failed\",\"played\":false}");
+  }
+}
+
+static bool postBufEnsure(size_t need) {
+  if (need > AMP_MAX_WAV) {
+    g_postOverflow = true;
+    return false;
+  }
+  if (g_postBuf && g_postCap >= need) return true;
+  size_t cap = g_postCap ? g_postCap : 4096;
+  while (cap < need) {
+    size_t next = cap * 2;
+    if (next < cap || next > AMP_MAX_WAV) {
+      cap = AMP_MAX_WAV;
+      break;
+    }
+    cap = next;
+  }
+  if (cap < need) cap = need;
+  uint8_t *nb = (uint8_t *)ampMalloc(cap);
+  if (!nb) {
+    g_postOverflow = true;
+    Serial.printf("play_wav realloc fail need=%u\n", (unsigned)need);
+    return false;
+  }
+  if (g_postBuf && g_postLen) memcpy(nb, g_postBuf, g_postLen);
+  if (g_postBuf) ampFree(g_postBuf);
+  g_postBuf = nb;
+  g_postCap = cap;
+  return true;
 }
 
 static void handlePlayWavBody() {
   WebServer &s = *g_ampSrv;
+  String ct = s.header("Content-Type");
+  ct.toLowerCase();
+  const bool multipart = ct.startsWith("multipart/");
+
+  if (multipart) {
+    HTTPUpload &upload = s.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      if (g_postBuf) {
+        ampFree(g_postBuf);
+        g_postBuf = nullptr;
+      }
+      g_postLen = g_postCap = 0;
+      g_postOverflow = false;
+      Serial.printf("play_wav multipart start name=%s\n", upload.filename.c_str());
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      if (g_postOverflow) return;
+      size_t need = g_postLen + upload.currentSize;
+      if (!postBufEnsure(need)) return;
+      memcpy(g_postBuf + g_postLen, upload.buf, upload.currentSize);
+      g_postLen += upload.currentSize;
+    } else if (upload.status == UPLOAD_FILE_END) {
+      Serial.printf("play_wav multipart end: %u bytes overflow=%d\n",
+                    (unsigned)g_postLen, (int)g_postOverflow);
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+      g_postOverflow = true;
+    }
+    return;
+  }
+
+  // Raw audio/wav (or octet-stream) body — requires collectHeaders(Content-Length)
   HTTPRaw &raw = s.raw();
   if (raw.status == RAW_START) {
     if (g_postBuf) {
@@ -256,33 +332,28 @@ static void handlePlayWavBody() {
     g_postOverflow = false;
     size_t need = 0;
     if (s.hasHeader("Content-Length")) need = (size_t)s.header("Content-Length").toInt();
-    // When Content-Length is missing/hidden, do NOT demand full AMP_MAX_WAV —
-    // malloc of 320KB often fails without PSRAM → false "bad wav body" 400.
-    // Prefer a chunk-sized default (~96KB) that peanut/Trace clients already use.
-    if (need < 44 || need > AMP_MAX_WAV) need = 96 * 1024;
-    g_postCap = need;
-    g_postBuf = (uint8_t *)ampMalloc(g_postCap);
-    if (!g_postBuf) {
-      // Last chance: smaller buffer
-      g_postCap = 48 * 1024;
-      g_postBuf = (uint8_t *)ampMalloc(g_postCap);
+    if (need < 44 || need > AMP_MAX_WAV) {
+      // Unknown size — grow dynamically from a small seed (camera leaves little DRAM)
+      need = 8 * 1024;
+      Serial.printf("play_wav raw Content-Length missing/bad — seed %u\n", (unsigned)need);
     }
-    if (!g_postBuf) {
-      g_postOverflow = true;
-      g_postCap = 0;
-      Serial.println("play_wav: alloc failed");
+    if (!postBufEnsure(need)) {
+      Serial.println("play_wav: alloc failed at START");
       return;
     }
+    Serial.printf("play_wav raw start need=%u cap=%u\n", (unsigned)need, (unsigned)g_postCap);
   } else if (raw.status == RAW_WRITE) {
     if (g_postOverflow || !g_postBuf) return;
-    if (g_postLen + raw.currentSize > g_postCap) {
-      g_postOverflow = true;
-      return;
-    }
+    size_t need = g_postLen + raw.currentSize;
+    if (!postBufEnsure(need)) return;
     memcpy(g_postBuf + g_postLen, raw.buf, raw.currentSize);
     g_postLen += raw.currentSize;
+  } else if (raw.status == RAW_END) {
+    Serial.printf("play_wav raw end: %u bytes overflow=%d\n",
+                  (unsigned)g_postLen, (int)g_postOverflow);
   } else if (raw.status == RAW_ABORTED) {
     g_postOverflow = true;
+    Serial.println("play_wav raw aborted");
   }
 }
 
@@ -290,23 +361,33 @@ static void handlePlayWav() {
   WebServer &s = *g_ampSrv;
   cors(s);
   if (g_postOverflow || !g_postBuf || g_postLen < 44) {
-    s.send(400, "application/json", "{\"ok\":false,\"error\":\"bad wav body\"}");
+    Serial.printf("play_wav reject: buf=%p len=%u overflow=%d\n",
+                  (void *)g_postBuf, (unsigned)g_postLen, (int)g_postOverflow);
+    s.send(400, "application/json",
+           "{\"ok\":false,\"error\":\"bad wav body\",\"played\":false}");
     if (g_postBuf) {
       ampFree(g_postBuf);
       g_postBuf = nullptr;
     }
     g_postLen = g_postCap = 0;
+    g_postOverflow = false;
     return;
   }
   uint8_t *buf = g_postBuf;
   size_t len = g_postLen;
   g_postBuf = nullptr;
   g_postLen = g_postCap = 0;
-  s.send(200, "application/json", "{\"ok\":true,\"playing\":true}");
+  g_postOverflow = false;
+  // Play then ACK so client knows amp actually spoke
   g_playBusy = true;
-  ampPlayWavBuffer(buf, len);
+  bool ok = ampPlayWavBuffer(buf, len);
   g_playBusy = false;
   ampFree(buf);
+  if (ok) {
+    s.send(200, "application/json", "{\"ok\":true,\"playing\":true,\"played\":true}");
+  } else {
+    s.send(500, "application/json", "{\"ok\":false,\"error\":\"amp play failed\",\"played\":false}");
+  }
 }
 
 static void handleAmpOptions() {
@@ -328,9 +409,7 @@ static void handleVolume() {
   else if (s.hasArg("v")) v = s.arg("v").toInt();
   else if (s.hasArg("pct")) v = s.arg("pct").toInt();
   else if (s.hasArg("volume")) v = s.arg("volume").toInt();
-  if (v < 0) v = 0;
-  if (v > 150) v = 150;
-  g_ampVolume = v;
+  ampVolumeSet(v);
   char buf[96];
   snprintf(buf, sizeof(buf), "{\"ok\":true,\"volume\":%d}", g_ampVolume);
   s.send(200, "application/json", buf);
@@ -346,6 +425,11 @@ void ampInit() {
 
 void ampRegisterRoutes(WebServer &s) {
   g_ampSrv = &s;
+  // Critical: without this, raw() never sees Content-Length → empty body → HTTP 400
+  static const char *headerKeys[] = {
+      "Content-Type", "Content-Length", "Content-Disposition", "Accept", "User-Agent"};
+  s.collectHeaders(headerKeys, 5);
+
   s.on("/api/play_url", HTTP_GET, handlePlayUrl);
   s.on("/api/play_url", HTTP_POST, handlePlayUrl);
   s.on("/api/play_url", HTTP_OPTIONS, handleAmpOptions);

@@ -28,22 +28,26 @@ Talk *through* Trace uses **Peanut Ana** as the primary voice (same character as
 | Order | Engine | Needs |
 |-------|--------|--------|
 | 1 | **edge-tts** `en-US-AnaNeural` (Peanut Ana) | free / no key — this is Peanut's real voice |
-| 2 | **Groq** Orpheus TTS | `GROQ_API_KEY` (+ accept Orpheus terms once in [Groq console](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english)) |
-| 3 | **Gemini** TTS | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (Gemini TTS-capable key) |
+| 2 | **Groq** Orpheus TTS | `GROQ_API_KEY` (+ accept Orpheus terms once) |
+| 3 | **Gemini** TTS | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 | 4 | Spidey 101Soundboards (optional) | network |
 | 5 | pyttsx3 | last-resort laptop voice only |
 
-If Groq/Gemini TTS aren't ready yet, **Ana still speaks** (same voice peanut-robot used). Cloud engines engage automatically once keys + terms are valid.
+**Full click-path (Gemini terms + Groq Orpheus accept):** see [`desktop/TTS_KEYS.md`](desktop/TTS_KEYS.md).
 
-Copy `.env.example` → `.env` in the Trace-E repo root **or** keep keys in `peanut-robot/.env` — `speak_server` loads both via dotenv (never commit real `.env`).
+Short version:
+
+1. **Gemini:** [aistudio.google.com](https://aistudio.google.com/) → accept ToS → try TTS at [new_speech](https://aistudio.google.com/app/prompts/new_speech) → create key at [apikey](https://aistudio.google.com/apikey) → if API says paid/billing, use [billing setup](https://ai.google.dev/gemini-api/docs/billing) → set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`).
+2. **Groq:** [console.groq.com/keys](https://console.groq.com/keys) → open [Orpheus playground](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english) and **accept model terms** → set `GROQ_API_KEY`.
+
+If Groq/Gemini TTS aren't ready yet, **Ana still speaks**. Cloud engines engage once keys + terms are valid.
 
 ```bash
 copy .env.example .env
 # set GROQ_API_KEY=... and GEMINI_API_KEY=...
 ```
 
-Optional overrides: `TRACE_E_TTS_ENGINE`, `GROQ_TTS_VOICE`, `GEMINI_TTS_VOICE`, `TRACE_E_ANA_VOICE`.
-
+Keys also load from `peanut-robot/.env`. Optional: `TRACE_E_TTS_ENGINE`, `GROQ_TTS_VOICE`, `GEMINI_TTS_VOICE`, `TRACE_E_ANA_VOICE`.
 ### 3. Run speak_server (local brain)
 
 From the repo root:
@@ -118,3 +122,7 @@ Do **not** commit:
 - `.env`, API keys, keystores, `local.properties`
 
 Use `.env.example` and `wifi_config.h.example` as templates only.
+
+## Z400 takeover
+
+Hand this repo to another PC (Z400): see **[HANDOFF.md](HANDOFF.md)** for clone URL, speak_server, ESP IP, flash FQBN, APK release links, brain IP, chirps-off, and TTS key copy notes (keys stay out of git).

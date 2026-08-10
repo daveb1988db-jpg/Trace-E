@@ -15,7 +15,8 @@ TTS (Peanut Ana PRIMARY for Ollie):
   4) optional 101Soundboards Spidey
   5) pyttsx3 only as last resort
 
-Playback: prefer ESP :8765 /api/play_wav or /api/play_url; else laptop pygame/winsound.
+Playback: AMP-FIRST (MAX98357A on ESP :8765). Default amp-only —
+laptop only if amp hard-fails AND allow_laptop=1 / TRACE_E_ALLOW_LAPTOP=1.
 NO chirps on WASD (drive stays on ESP from the page).
 """
 
@@ -55,16 +56,21 @@ def _load_dotenv_files() -> List[str]:
     except Exception:
         return loaded
     peanut_root = Path(os.environ.get("PEANUT_ROOT") or r"C:\Users\Bartl\Documents\peanut-robot")
-    candidates = [
-        REPO_DIR / ".env",
-        DESKTOP_DIR / ".env",
-        peanut_root / ".env",
-    ]
-    for path in candidates:
+    # Peanut first (API keys), then Trace overrides (ESP IP, amp-only, chirps)
+    base_first = [peanut_root / ".env"]
+    override_last = [REPO_DIR / ".env", DESKTOP_DIR / ".env"]
+    for path in base_first:
         try:
             if path.is_file():
                 load_dotenv(path, override=False)
                 loaded.append(str(path))
+        except Exception:
+            continue
+    for path in override_last:
+        try:
+            if path.is_file():
+                load_dotenv(path, override=True)
+                loaded.append(str(path) + " (override)")
         except Exception:
             continue
     return loaded
@@ -91,11 +97,20 @@ HOST = os.environ.get("TRACE_E_SPEAK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("TRACE_E_SPEAK_PORT", "8787"))
 # Chirps default OFF — no laptop/ESP tones unless client sends mode=situational|random
 CHIRPS_DEFAULT = (os.environ.get("TRACE_E_CHIRPS") or "off").strip().lower()
+# Amp-only by default — laptop speakers are opt-in fallback only
+ALLOW_LAPTOP = (os.environ.get("TRACE_E_ALLOW_LAPTOP") or "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 DEFAULT_ESP = (
     os.environ.get("TRACE_E_ESP_BASE")
-    or os.environ.get("ESP_BASE")
-    or os.environ.get("ESP_BASE_URL")
     or "http://192.168.1.104"
+).rstrip("/")
+# Peanut's ESP_BASE_URL may point at a different robot — only used as discover hint
+_PEANUT_ESP_HINT = (
+    os.environ.get("ESP_BASE") or os.environ.get("ESP_BASE_URL") or ""
 ).rstrip("/")
 
 # Peanut Ana + dual-key cloud TTS
@@ -153,7 +168,9 @@ def _json_bytes(obj: dict, code: int = 200) -> Tuple[int, bytes, str]:
 def discover_esp(preferred: str = DEFAULT_ESP, timeout: float = 0.35, quick: bool = False) -> str:
     preferred = (preferred or DEFAULT_ESP).rstrip("/")
     hosts = []
-    for base in (preferred, DEFAULT_ESP, "http://192.168.1.104", "http://192.168.1.105"):
+    for base in (preferred, DEFAULT_ESP, "http://192.168.1.104", _PEANUT_ESP_HINT, "http://192.168.1.105"):
+        if not base:
+            continue
         try:
             h = urllib.parse.urlparse(base if "://" in base else f"http://{base}").hostname
             if h and h not in hosts:
@@ -651,11 +668,33 @@ def mp3_to_wav_16k(mp3_path: Path) -> Optional[Path]:
 
 
 def play_laptop(wav_path: Path) -> bool:
+    """Play WAV on the laptop using shared-mode backends (avoid exclusive WASAPI).
+
+    Order: winsound (shared WinMM) → pygame DirectSound shared → pygame default.
+    """
+    path = str(wav_path)
+    # 1) winsound / WinMM — always shared, survives exclusive-mode apps better
+    try:
+        import winsound
+
+        winsound.PlaySound(path, winsound.SND_FILENAME)
+        return True
+    except Exception:
+        pass
+
+    # 2) pygame with DirectSound (shared), never WASAPI exclusive
     try:
         import pygame
 
+        os.environ.setdefault("SDL_AUDIODRIVER", "directsound")
+        try:
+            pygame.mixer.quit()
+        except Exception:
+            pass
+        # Explicit stereo 44.1k is widely compatible with Realtek shared mix
+        pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=2048)
         pygame.mixer.init()
-        pygame.mixer.music.load(str(wav_path))
+        pygame.mixer.music.load(path)
         pygame.mixer.music.set_volume(1.0)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
@@ -663,10 +702,23 @@ def play_laptop(wav_path: Path) -> bool:
         return True
     except Exception:
         pass
-    try:
-        import winsound
 
-        winsound.PlaySound(str(wav_path), winsound.SND_FILENAME)
+    # 3) last resort: pygame without driver pin
+    try:
+        import pygame
+
+        try:
+            pygame.mixer.quit()
+        except Exception:
+            pass
+        if "SDL_AUDIODRIVER" in os.environ:
+            del os.environ["SDL_AUDIODRIVER"]
+        pygame.mixer.init()
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.set_volume(1.0)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.05)
         return True
     except Exception:
         return False
@@ -700,57 +752,166 @@ def amplify_wav_inplace(wav_path: Path, gain: float = 2.4) -> Path:
         return wav_path
 
 
-def push_wav_to_esp(esp_base: str, wav_path: Path, serve_host: str = HOST, serve_port: int = PORT) -> Tuple[bool, str]:
-    """Push WAV to ESP amp. Prefer sync play_wav (real result); play_url is fire-and-forget."""
+def push_wav_to_esp(
+    esp_base: str,
+    wav_path: Path,
+    serve_host: str = HOST,
+    serve_port: int = PORT,
+) -> Tuple[bool, str]:
+    """Push WAV to ESP amp. play_wav first; play_url fallback with real wait/verify."""
     host = urllib.parse.urlparse(esp_base if "://" in esp_base else f"http://{esp_base}").hostname
     if not host:
         return False, "bad esp host"
     drive = f"http://{host}:8765"
+    errors: List[str] = []
 
-    # Restore / nudge volume if peanut-style /api/volume exists (no-op on Trace)
+    # Restore / nudge volume (no-op on older Trace flash without /api/volume)
+    vol_ok = False
     for q in ("level=100", "v=100", "pct=100", "volume=100"):
         try:
-            urllib.request.urlopen(f"{drive}/api/volume?{q}", timeout=1.2).read()
-            break
+            req = urllib.request.Request(f"{drive}/api/volume?{q}", method="POST", data=b"")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                if 200 <= resp.status < 300:
+                    vol_ok = True
+                    break
         except Exception:
             continue
+    if not vol_ok:
+        for q in ("level=100", "v=100"):
+            try:
+                urllib.request.urlopen(f"{drive}/api/volume?{q}", timeout=1.2).read()
+                vol_ok = True
+                break
+            except Exception:
+                continue
 
-    # 1) raw play_wav — synchronous; ESP only ACKs after body accepted / play starts
+    data = wav_path.read_bytes()
+    if len(data) < 44 or data[:4] != b"RIFF":
+        return False, "not a wav file"
+
+    # 1) raw play_wav — sync; ESP should ACK after body accepted / play
     try:
-        data = wav_path.read_bytes()
         req = urllib.request.Request(
             f"{drive}/api/play_wav",
             data=data,
             method="POST",
-            headers={"Content-Type": "audio/wav", "Content-Length": str(len(data))},
+            headers={
+                "Content-Type": "audio/wav",
+                "Content-Length": str(len(data)),
+                "Accept": "application/json",
+            },
         )
-        with urllib.request.urlopen(req, timeout=90) as resp:
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=120) as resp:
             body = resp.read().decode("utf-8", errors="replace")
-            if 200 <= resp.status < 300 and "false" not in body.lower()[:40]:
-                return True, f"esp play_wav {len(data)}b"
-            play_wav_err = f"play_wav HTTP {resp.status} {body[:120]}"
+            elapsed = time.time() - t0
+            low = body.lower()
+            if (
+                200 <= resp.status < 300
+                and "false" not in low[:80]
+                and '"ok":false' not in low.replace(" ", "")
+            ):
+                return True, f"esp play_wav {len(data)}b ({elapsed:.1f}s) vol={'ok' if vol_ok else 'n/a'}"
+            errors.append(f"play_wav HTTP {resp.status} {body[:160]}")
     except Exception as exc:
-        play_wav_err = str(exc)
+        err_body = ""
+        if hasattr(exc, "read"):
+            try:
+                err_body = exc.read().decode("utf-8", errors="replace")[:160]
+            except Exception:
+                pass
+        errors.append(f"play_wav:{exc} {err_body}".strip())
 
-    # 2) play_url fallback (ESP pulls from laptop LAN)
+    # 2) multipart play_wav (peanut-compatible) — some FW only collects upload()
+    try:
+        boundary = "----TraceWav7MA4YWxkTrZu0gW"
+        filename = wav_path.name or "speak.wav"
+        pre = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: audio/wav\r\n\r\n"
+        ).encode("ascii")
+        post = f"\r\n--{boundary}--\r\n".encode("ascii")
+        mp = pre + data + post
+        req = urllib.request.Request(
+            f"{drive}/api/play_wav",
+            data=mp,
+            method="POST",
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(mp)),
+                "Accept": "application/json",
+            },
+        )
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            elapsed = time.time() - t0
+            low = body.lower()
+            if (
+                200 <= resp.status < 300
+                and "false" not in low[:80]
+                and '"ok":false' not in low.replace(" ", "")
+            ):
+                return (
+                    True,
+                    f"esp play_wav multipart {len(data)}b ({elapsed:.1f}s)",
+                )
+            errors.append(f"play_wav multipart HTTP {resp.status} {body[:120]}")
+    except Exception as exc:
+        errors.append(f"play_wav multipart:{exc}")
+
+    # 3) play_url — ESP pulls from laptop LAN; wait for connection close (= play done on current FW)
     rel = wav_path.name
     serve = serve_host
     if serve in ("127.0.0.1", "localhost", "0.0.0.0", "::", "[::]"):
         lan = _guess_lan_ip()
         if lan:
             serve = lan
-    public = f"http://{serve}:{serve_port}/_tts_cache/{rel}"
+    public = f"http://{serve}:{serve_port}/_tts_cache/{urllib.parse.quote(rel)}"
+    # Ensure cache is reachable from this machine before asking ESP
+    try:
+        with urllib.request.urlopen(public, timeout=3) as probe:
+            got = probe.read(12)
+            if got[:4] != b"RIFF":
+                errors.append(f"cache not serving WAV at {public}")
+                return False, "; ".join(errors)
+    except Exception as exc:
+        errors.append(f"cache unreachable {public}: {exc}")
+        return False, "; ".join(errors)
+
     try:
         q = urllib.parse.urlencode({"url": public})
-        req = urllib.request.Request(f"{drive}/api/play_url?{q}", method="POST", data=b"")
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            if 200 <= resp.status < 300:
-                # Give ESP time to pull+play; cannot know success — treat as tentative
-                time.sleep(0.4)
-                return True, f"esp play_url {public} (after play_wav fail: {play_wav_err})"
+        req = urllib.request.Request(
+            f"{drive}/api/play_url?{q}",
+            method="POST",
+            data=b"",
+            headers={"Accept": "application/json", "Content-Length": "0"},
+        )
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            elapsed = time.time() - t0
+            low = body.lower().replace(" ", "")
+            approx_secs = max(0.6, (len(data) - 44) / (16000.0 * 2.0))
+            if resp.status >= 300 or '"ok":false' in low or '"played":false' in low:
+                errors.append(f"play_url HTTP {resp.status} body={body[:120]} elapsed={elapsed:.1f}s")
+            elif '"played":true' in low:
+                # New FW — real play completed before ACK
+                return True, f"esp play_url {public} (played; prior: {errors[0] if errors else 'n/a'})"
+            elif 200 <= resp.status < 300:
+                # Old FW ACKs {"queued":true} then plays — wait so amp finishes before UI returns
+                wait_s = approx_secs + 0.6
+                time.sleep(wait_s)
+                return True, (
+                    f"esp play_url {public} (queued→waited {wait_s:.1f}s after {elapsed:.2f}s ACK; "
+                    f"prior: {errors[0] if errors else 'n/a'})"
+                )
+            else:
+                errors.append(f"play_url HTTP {resp.status} body={body[:120]}")
     except Exception as exc:
-        return False, f"play_wav:{play_wav_err}; play_url:{exc}"
-    return False, f"play_wav:{play_wav_err}; play_url rejected"
+        errors.append(f"play_url:{exc}")
+    return False, "; ".join(errors)
 
 
 def _guess_lan_ip() -> Optional[str]:
@@ -835,13 +996,14 @@ def proxy_esp_capture(esp_base: Optional[str] = None) -> Tuple[int, bytes, str]:
 
 
 def proxy_esp_status(esp_base: Optional[str] = None) -> Tuple[int, bytes, str]:
-    """Probe ESP :8765/api/status (and fall back to discover)."""
-    bases = []
+    """Probe ESP :8765/api/status. Prefer the requested host; light fallback only."""
+    bases: List[str] = []
     if esp_base:
         bases.append(esp_base)
-    bases.append(DEFAULT_ESP)
-    for n in (104, 105, 106, 102, 100):
-        bases.append(f"http://192.168.1.{n}")
+    else:
+        bases.append(DEFAULT_ESP)
+        for n in (104, 105, 106, 102, 100):
+            bases.append(f"http://192.168.1.{n}")
     seen = set()
     last_err = "unreachable"
     for b in bases:
@@ -852,7 +1014,7 @@ def proxy_esp_status(esp_base: Optional[str] = None) -> Tuple[int, bytes, str]:
         url = f"http://{h}:8765/api/status"
         try:
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
+            with urllib.request.urlopen(req, timeout=0.8) as resp:
                 raw = resp.read()
                 try:
                     data = json.loads(raw.decode("utf-8", errors="replace"))
@@ -889,7 +1051,7 @@ def proxy_esp_drive(query: str, esp_base: Optional[str] = None) -> Tuple[int, by
         target = f"{target}?{query}"
     try:
         req = urllib.request.Request(target, method="GET", headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=2.5) as resp:
+        with urllib.request.urlopen(req, timeout=0.6) as resp:
             body = resp.read()
             ctype = resp.headers.get("Content-Type", "application/json")
             return int(resp.status), body, ctype
@@ -1036,10 +1198,13 @@ def handle_speak(
     text: str,
     esp_base: Optional[str] = None,
     engine: Optional[str] = None,
+    allow_laptop: Optional[bool] = None,
 ) -> dict:
     text = (text or "").strip()
     if not text:
         return {"ok": False, "error": "empty"}
+    # Amp-first / amp-only — laptop only when explicitly opted in
+    use_laptop = ALLOW_LAPTOP if allow_laptop is None else bool(allow_laptop)
     esp = discover_esp(esp_base or DEFAULT_ESP)
     want = _normalize_engine(engine)
     chain = _peanut_engine_chain(want)
@@ -1070,47 +1235,67 @@ def handle_speak(
             "keys": _key_status(),
         }
 
-    # Loudness restore — beep-kill era left peanut vol=0; Trace has no volume API
+    # Loudness restore — beep-kill era left peanut vol=0; Trace may lack /api/volume until flash
     wav = amplify_wav_inplace(wav, gain=2.6)
+    # Ensure amplified file lives under _tts_cache for ESP play_url
+    if wav.parent != CACHE_DIR:
+        dest = CACHE_DIR / wav.name
+        try:
+            dest.write_bytes(wav.read_bytes())
+            wav = dest
+        except Exception:
+            pass
 
-    played_on = None
-    detail = ""
     ok_esp, detail = push_wav_to_esp(esp, wav)
     if ok_esp:
-        played_on = "esp"
-        if "play_url" in detail and "play_wav" in detail:
-            if play_laptop(wav):
-                played_on = "laptop+esp?"
-                detail = detail + "; mirrored to laptop (play_url untrusted)"
-    else:
-        if play_laptop(wav):
-            played_on = "laptop"
-            detail = f"esp failed ({detail})"
-        else:
-            return {
-                "ok": False,
-                "error": "could not play on ESP or laptop",
-                "esp": esp,
-                "engine": used,
-                "detail": detail,
-                "errors": errors,
-            }
+        return {
+            "ok": True,
+            "text": text,
+            "engine": used,
+            "requested_engine": want,
+            "played_on": "esp",
+            "status": "Speaking on amp…",
+            "esp": esp,
+            "wav": str(wav.name),
+            "detail": detail,
+            "errors": errors or None,
+            "keys": {
+                "groq": bool(GROQ_API_KEY),
+                "gemini": bool(GEMINI_API_KEY),
+            },
+            "allow_laptop": use_laptop,
+            "volume_note": "wav gain×2.6; /api/volume nudged if present",
+        }
+
+    if use_laptop and play_laptop(wav):
+        return {
+            "ok": True,
+            "text": text,
+            "engine": used,
+            "requested_engine": want,
+            "played_on": "laptop",
+            "status": "Speaking on laptop… (amp failed — opt-in fallback)",
+            "esp": esp,
+            "wav": str(wav.name),
+            "detail": f"esp failed ({detail})",
+            "errors": errors or None,
+            "keys": {
+                "groq": bool(GROQ_API_KEY),
+                "gemini": bool(GEMINI_API_KEY),
+            },
+            "allow_laptop": True,
+            "volume_note": "laptop fallback only — set allow_laptop/TRACE_E_ALLOW_LAPTOP",
+        }
 
     return {
-        "ok": True,
-        "text": text,
-        "engine": used,
-        "requested_engine": want,
-        "played_on": played_on,
+        "ok": False,
+        "error": "amp play failed"
+        + ("" if use_laptop else " (laptop fallback disabled — pass allow_laptop:true to opt in)"),
         "esp": esp,
-        "wav": str(wav.name),
+        "engine": used,
         "detail": detail,
-        "errors": errors or None,
-        "keys": {
-            "groq": bool(GROQ_API_KEY),
-            "gemini": bool(GEMINI_API_KEY),
-        },
-        "volume_note": "wav gain×2.6; Trace has no /api/volume (peanut mute N/A)",
+        "errors": errors,
+        "allow_laptop": use_laptop,
     }
 
 
@@ -1173,6 +1358,11 @@ class TraceHandler(SimpleHTTPRequestHandler):
                         "keys": _key_status(),
                     },
                     "chirps": CHIRPS_DEFAULT,
+                    "playback": {
+                        "primary": "esp-amp",
+                        "allow_laptop_default": ALLOW_LAPTOP,
+                        "esp_default": DEFAULT_ESP,
+                    },
                 }
             )
             self._send(code, body, ctype)
@@ -1202,7 +1392,12 @@ class TraceHandler(SimpleHTTPRequestHandler):
             try:
                 req = urllib.request.Request(
                     url,
-                    headers={"User-Agent": _UA, "Accept": "*/*", "Connection": "close"},
+                    headers={
+                        "User-Agent": _UA,
+                        "Accept": "*/*",
+                        "Connection": "close",
+                        "Accept-Encoding": "identity",
+                    },
                 )
                 upstream = urllib.request.urlopen(req, timeout=8)
             except Exception as exc:
@@ -1213,15 +1408,28 @@ class TraceHandler(SimpleHTTPRequestHandler):
                 ctype = upstream.headers.get(
                     "Content-Type", "multipart/x-mixed-replace; boundary=frame"
                 )
+                # Zero-lag MJPEG proxy: chunked passthrough, no gzip, flush every write
                 self.send_response(200)
                 self._cors()
                 self.send_header("Content-Type", ctype)
-                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
                 self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.send_header("Content-Encoding", "identity")
+                self.send_header("X-Accel-Buffering", "no")
                 self.send_header("Connection", "close")
                 self.end_headers()
+                try:
+                    # Disable Nagle on client socket if available
+                    sock = getattr(self.connection, "sock", None) or self.connection
+                    if hasattr(sock, "setsockopt"):
+                        import socket as _socket
+
+                        sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1)
+                except Exception:
+                    pass
                 while True:
-                    chunk = upstream.read(4096)
+                    chunk = upstream.read(65536)
                     if not chunk:
                         break
                     self.wfile.write(chunk)
@@ -1296,11 +1504,22 @@ class TraceHandler(SimpleHTTPRequestHandler):
         if path in ("/api/speak", "/api/say"):
             esp = data.get("esp") or data.get("esp_base")
             engine = data.get("engine") or data.get("voice") or data.get("tts")
+            allow_raw = data.get("allow_laptop")
+            if allow_raw is None:
+                allow_raw = data.get("laptop")
+            allow_laptop: Optional[bool]
+            if allow_raw is None:
+                allow_laptop = None
+            elif isinstance(allow_raw, bool):
+                allow_laptop = allow_raw
+            else:
+                allow_laptop = str(allow_raw).strip().lower() in ("1", "true", "yes", "on")
             try:
                 result = handle_speak(
                     str(data.get("text") or data.get("say") or ""),
                     esp,
                     engine=str(engine) if engine else None,
+                    allow_laptop=allow_laptop,
                 )
             except Exception as exc:
                 result = {"ok": False, "error": str(exc), "trace": traceback.format_exc()[-400:]}
@@ -1327,6 +1546,10 @@ def main() -> int:
         flush=True,
     )
     print(f"Chirps                POST /api/chirp (default={CHIRPS_DEFAULT})", flush=True)
+    print(
+        f"Playback              amp-first · laptop_fallback={'ON' if ALLOW_LAPTOP else 'OFF (pass allow_laptop)'}",
+        flush=True,
+    )
     print(f"ESP proxy             GET  /api/esp/stream  /api/esp/drive  /api/esp/status", flush=True)
     print(f"ESP default           {DEFAULT_ESP}", flush=True)
     print(f"SFX dir               {SFX_DIR}", flush=True)

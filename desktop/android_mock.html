@@ -913,30 +913,46 @@
 
     function syncMotors() {
       // Chassis-corrected: A/stick-left = physical left, D/stick-right = physical right
-      // (signs flipped vs classic tank — A was going right on this bot)
-      const SPIN = 36;
-      const CURVE = 0.92; // strong roll-steer mix into L/R
+      // Kid-friendly stick: large deadzone, steer expo, soft roll-steer
+      const STICK_DEAD = 0.28;
+      const STEER_EXPO = 2.2;
+      const THROTTLE_EXPO = 1.35;
+      const STEER_GAIN_ROLL = 0.38;
+      const STEER_GAIN_SPIN = 0.50;
+      const FWD_GAIN = 0.90;
+      const SPIN = 28;
+      function applyDeadzone(v, dz) {
+        if (Math.abs(v) < dz) return 0;
+        const sign = v < 0 ? -1 : 1;
+        return sign * (Math.abs(v) - dz) / (1 - dz);
+      }
+      function expoCurve(v, e) {
+        if (v === 0) return 0;
+        const sign = v < 0 ? -1 : 1;
+        return sign * Math.pow(Math.abs(v), e);
+      }
       let L = 0, R = 0;
       if (keys.has('w')) { L = 100; R = 100; }
       if (keys.has('s')) { L = -100; R = -100; }
       if (keys.has('a') && !keys.has('w') && !keys.has('s')) { L = SPIN; R = -SPIN; }
       else if (keys.has('d') && !keys.has('w') && !keys.has('s')) { L = -SPIN; R = SPIN; }
       else if (keys.has('a') && (keys.has('w') || keys.has('s'))) {
-        // curve left (match mock_ui wa): outer left, inner right drops
         if (keys.has('w')) { L = 100; R = 8; }
         else { L = -100; R = -8; }
       } else if (keys.has('d') && (keys.has('w') || keys.has('s'))) {
         if (keys.has('w')) { L = 8; R = 100; }
         else { L = -8; R = -100; }
       }
-      if (stick.mag > 0.12) {
-        const fwd = -stick.y * 100;
-        // Invert X vs classic: stick left → physical left on this chassis
-        const turn = -stick.x * 100 * CURVE;
+      if (stick.mag > STICK_DEAD) {
+        let sx = expoCurve(applyDeadzone(stick.x, STICK_DEAD), STEER_EXPO);
+        let sy = expoCurve(applyDeadzone(stick.y, STICK_DEAD * 0.85), THROTTLE_EXPO);
+        const fwd = -sy * 100 * FWD_GAIN;
+        const rolling = Math.abs(fwd) >= 18;
+        const steerGain = rolling ? STEER_GAIN_ROLL : STEER_GAIN_SPIN;
+        const turn = -sx * 100 * steerGain;
         L = Math.round(fwd + turn);
         R = Math.round(fwd - turn);
-        // Soften pure spin (low fwd)
-        if (Math.abs(fwd) < 18) {
+        if (!rolling) {
           const scale = SPIN / 100;
           L = Math.round(L * scale);
           R = Math.round(R * scale);
@@ -1005,7 +1021,7 @@
 
     // Keep ESP failsafe alive while keys/stick held
     setInterval(() => {
-      if (keys.size || stick.mag > 0.12) syncMotors();
+      if (keys.size || stick.mag > 0.28) syncMotors();
     }, 200);
 
     // Gestures

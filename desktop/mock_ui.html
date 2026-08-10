@@ -1285,20 +1285,28 @@
         return String(base).replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
       }
     }
-    function driveUrl() { return BRAIN + '/api/esp/drive'; }
+    // Prefer LAN-direct ESP (CORS on firmware). Proxy only as fallback.
+    function driveUrlDirect() {
+      return 'http://' + hostOnly(espBase) + ':8765/api/drive';
+    }
+    function driveUrlProxy() { return BRAIN + '/api/esp/drive'; }
+    function streamUrlDirect() {
+      return 'http://' + hostOnly(espBase) + ':82/stream';
+    }
+    function streamUrlProxy() {
+      return BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
+    }
+    let useDirectDrive = true;
+    let useDirectCam = true;
     function statusUrls() {
+      // One known ESP first — avoid scanning every candidate every poll (was a lag hammer).
       const urls = [];
       const seen = new Set();
       const add = (u) => { if (u && !seen.has(u)) { seen.add(u); urls.push(u); } };
+      const h = hostOnly(espBase);
+      add('http://' + h + ':8765/api/status');
       add(BRAIN + '/api/esp/status?esp=' + encodeURIComponent(espBase));
-      for (const h of [hostOnly(espBase), ...CANDIDATE_IPS]) {
-        if (!h) continue;
-        add(BRAIN + '/api/esp/status?esp=' + encodeURIComponent('http://' + h));
-      }
       return urls;
-    }
-    function streamUrl() {
-      return BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
     }
     function lrToArcade(L, R) {
       const throttle = Math.max(-1, Math.min(1, (L + R) / 200));
@@ -1316,25 +1324,66 @@
       return { throttle, steer, speed: 100, left: L, right: R };
     }
 
-    async function postDrive(L, R) {
-      const a = lrToArcade(L, R);
-      const q = new URLSearchParams({
-        throttle: String(a.throttle),
-        steer: String(a.steer),
-        speed: String(a.speed),
-        left: String(a.left),
-        right: String(a.right),
-        esp: espBase,
-      });
-      const url = driveUrl() + '?' + q.toString();
-      try {
-        const r = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
-        driveOk = r.ok;
-        return r.ok;
-      } catch (_) {
-        driveOk = false;
-        return false;
-      }
+    // Fire-and-forget drive: coalesce in-flight, short timeout, prefer ESP direct.
+    let _driveInFlight = null;
+    let _drivePending = null;
+    let _driveCtrl = null;
+    function postDrive(L, R) {
+      _drivePending = [L, R];
+      if (_driveInFlight) return _driveInFlight;
+      const run = async () => {
+        while (_drivePending) {
+          const [l, r] = _drivePending;
+          _drivePending = null;
+          const a = lrToArcade(l, r);
+          const q = new URLSearchParams({
+            throttle: String(a.throttle),
+            steer: String(a.steer),
+            speed: String(a.speed),
+            left: String(a.left),
+            right: String(a.right),
+          });
+          if (_driveCtrl) { try { _driveCtrl.abort(); } catch (_) {} }
+          _driveCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+          const kill = setTimeout(() => { if (_driveCtrl) _driveCtrl.abort(); }, 280);
+          const opts = {
+            method: 'GET',
+            cache: 'no-store',
+            signal: _driveCtrl ? _driveCtrl.signal : undefined,
+          };
+          try {
+            let ok = false;
+            if (useDirectDrive) {
+              try {
+                const r = await fetch(driveUrlDirect() + '?' + q.toString(), { ...opts, mode: 'cors' });
+                ok = r.ok;
+              } catch (_) {
+                // CORS / offline — try no-cors beacon then proxy once
+                try {
+                  fetch(driveUrlDirect() + '?' + q.toString(), { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+                  ok = true;
+                } catch (__) {
+                  useDirectDrive = false;
+                }
+              }
+            }
+            if (!ok) {
+              q.set('esp', espBase);
+              const r = await fetch(driveUrlProxy() + '?' + q.toString(), { ...opts, mode: 'cors' });
+              ok = r.ok;
+              if (ok) useDirectDrive = false;
+            }
+            driveOk = ok;
+          } catch (_) {
+            driveOk = false;
+          } finally {
+            clearTimeout(kill);
+          }
+        }
+        _driveInFlight = null;
+      };
+      _driveInFlight = run();
+      return _driveInFlight;
     }
 
     function resolveLR() {
@@ -1403,13 +1452,13 @@
     function down(k) { if ('wasd'.includes(k)) { keys.add(k); syncPads(); } }
     function up(k) { if ('wasd'.includes(k)) { keys.delete(k); syncPads(); } }
 
-    // Keep failsafe alive while keys held (~450ms on ESP)
+    // Keep failsafe alive while keys held (~450ms on ESP) — coalesced, not queued
     setInterval(() => {
       if (keys.size) {
         const [L, R] = resolveLR();
         postDrive(L, R);
       }
-    }, 200);
+    }, 300);
 
     function gestureIdFromEvent(e) {
       if (e.key === ' ') return ' ';
@@ -1493,6 +1542,8 @@
       espBase = v.replace(/\/$/, '');
       localStorage.setItem('trace_e_esp', espBase);
       espPill.textContent = 'ESP: ' + hostOnly(espBase) + ' (manual)';
+      useDirectCam = true;
+      useDirectDrive = true;
       attachCam();
       discoverEsp();
     });
@@ -1542,16 +1593,16 @@
         const j = await r.json();
         if (j.ok) {
           const where = j.played_on || '?';
-          if (where === 'esp') {
-            speakNote.textContent = 'Speaking on amp… (' + (j.engine || 'tts') + ')';
+          if (where === 'esp' || (j.status && String(j.status).toLowerCase().includes('amp'))) {
+            speakNote.textContent = j.status || ('Speaking on amp… (' + (j.engine || 'tts') + ')');
           } else if (String(where).includes('laptop')) {
-            speakNote.textContent = 'Speaking on laptop… · ' + (j.engine || '') + ' · ' + (j.detail || '');
+            speakNote.textContent = j.status || ('Speaking on laptop… · ' + (j.engine || '') + ' · ' + (j.detail || ''));
           } else {
             speakNote.textContent = 'Said via ' + (j.engine || '?') + ' → ' + where;
           }
           driveStatus.textContent = 'Speak→' + where;
         } else {
-          speakNote.textContent = 'Speak failed: ' + (j.error || r.status);
+          speakNote.textContent = 'Speak failed: ' + (j.error || r.status) + (j.detail ? (' · ' + j.detail) : '');
         }
       } catch (err) {
         speakNote.textContent = 'Brain offline — run: python desktop/speak_server.py';
@@ -1579,37 +1630,64 @@
       return null;
     }
 
-    function attachCam() {
+    function markCamLive() {
+      camBox.classList.add('live');
+      crest.classList.add('dim');
+      camLed.classList.remove('warn');
+      const via = useDirectCam ? 'direct' : 'proxy';
+      camPill.innerHTML = '<span class="led" id="camLed"></span> Cam: live · ' + via;
+    }
+
+    function attachCam(forceProxy) {
       applyCamFlip();
-      const base = streamUrl();
+      const preferDirect = forceProxy ? false : useDirectCam;
+      const base = preferDirect ? streamUrlDirect() : streamUrlProxy();
+      // Cache-bust only when (re)attaching — never on a poll timer
       const src = base + (base.includes('?') ? '&' : '?') + 't=' + Date.now();
-      espCam.onload = () => {
-        camBox.classList.add('live');
-        crest.classList.add('dim');
-        camLed.classList.remove('warn');
-        camPill.innerHTML = '<span class="led" id="camLed"></span> Cam: live';
-      };
+      clearTimeout(attachCam._fallbackT);
+      espCam.onload = () => markCamLive();
       espCam.onerror = () => {
+        if (preferDirect && !forceProxy) {
+          // Direct :82 failed — fall back to brain proxy once
+          useDirectCam = false;
+          attachCam(true);
+          return;
+        }
         camBox.classList.remove('live');
         crest.classList.remove('dim');
         camLed.classList.add('warn');
         camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: no stream';
       };
-      // MJPEG: browsers fire onload on first frame; also mark live after short delay if loaded
       espCam.src = src;
-      setTimeout(() => {
-        if (espCam.naturalWidth > 0 || espCam.complete) {
-          camBox.classList.add('live');
-          crest.classList.add('dim');
-          camPill.innerHTML = '<span class="led" id="camLed"></span> Cam: live';
+      // If direct hangs (wedged single-client :82), fall back to proxy
+      attachCam._fallbackT = setTimeout(() => {
+        if (preferDirect && !forceProxy && !(espCam.naturalWidth > 0)) {
+          useDirectCam = false;
+          attachCam(true);
+          return;
         }
-      }, 2500);
+        if (espCam.naturalWidth > 0 || espCam.complete) markCamLive();
+      }, 3500);
+    }
+
+    function nudgeCamQuality() {
+      // Best-effort: Trace FW ships VGA q12; Peanut-style API if present
+      const h = hostOnly(espBase);
+      const urls = [
+        'http://' + h + ':8765/api/camera_quality?q=12&framesize=VGA',
+        'http://' + h + '/api/camera_quality?q=12&framesize=VGA',
+      ];
+      for (const url of urls) {
+        fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' }).catch(() => {});
+      }
     }
 
     (async () => {
       await discoverEsp();
+      nudgeCamQuality();
       attachCam();
-      setInterval(discoverEsp, 8000);
+      // Status poll was 8s × many IPs — now ~30s, single host
+      setInterval(discoverEsp, 30000);
     })();
   </script>
 </body>

@@ -5,19 +5,21 @@ plugins {
 
 android {
     namespace = "com.tracee.bot"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.tracee.bot"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-mock"
+        targetSdk = 34
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Debug-signed release APK is OK for family sideload (no Play Store keystore).
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
