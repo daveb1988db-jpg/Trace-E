@@ -8,8 +8,14 @@ Endpoints:
   POST /api/talk          → Talk TO Trace (chat/command stub)
   POST /api/speak         → Talk THROUGH Trace (TTS → ESP amp, laptop fallback)
 
-TTS: try 101Soundboards Spidey board scrape → mp3; fallback pyttsx3 robot voice.
-Playback: prefer ESP :8765 /api/play_url or /api/play_wav; else laptop pygame/winsound.
+TTS (Peanut Ana PRIMARY for Ollie):
+  1) edge-tts en-US-AnaNeural  (Peanut's working Ana voice)
+  2) Groq Orpheus TTS          (GROQ_API_KEY)
+  3) Gemini TTS                (GEMINI_API_KEY / GOOGLE_API_KEY)
+  4) optional 101Soundboards Spidey
+  5) pyttsx3 only as last resort
+
+Playback: prefer ESP :8765 /api/play_wav or /api/play_url; else laptop pygame/winsound.
 NO chirps on WASD (drive stays on ESP from the page).
 """
 
@@ -32,13 +38,39 @@ import urllib.request
 import wave
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 DESKTOP_DIR = Path(__file__).resolve().parent
+REPO_DIR = DESKTOP_DIR.parent
 CACHE_DIR = DESKTOP_DIR / "_tts_cache"
 SFX_DIR = DESKTOP_DIR / "assets" / "sfx"
 CACHE_DIR.mkdir(exist_ok=True)
 SFX_DIR.mkdir(parents=True, exist_ok=True)
+
+# Load API keys from Trace-E .env and/or peanut-robot .env (never commit real .env)
+def _load_dotenv_files() -> List[str]:
+    loaded: List[str] = []
+    try:
+        from dotenv import load_dotenv
+    except Exception:
+        return loaded
+    peanut_root = Path(os.environ.get("PEANUT_ROOT") or r"C:\Users\Bartl\Documents\peanut-robot")
+    candidates = [
+        REPO_DIR / ".env",
+        DESKTOP_DIR / ".env",
+        peanut_root / ".env",
+    ]
+    for path in candidates:
+        try:
+            if path.is_file():
+                load_dotenv(path, override=False)
+                loaded.append(str(path))
+        except Exception:
+            continue
+    return loaded
+
+
+_DOTENV_LOADED = _load_dotenv_files()
 
 # Situation → candidate WAV filenames (replace files in assets/sfx/ with real Spidey clips)
 SFX_MAP = {
@@ -62,15 +94,48 @@ CHIRPS_DEFAULT = (os.environ.get("TRACE_E_CHIRPS") or "off").strip().lower()
 DEFAULT_ESP = (
     os.environ.get("TRACE_E_ESP_BASE")
     or os.environ.get("ESP_BASE")
+    or os.environ.get("ESP_BASE_URL")
     or "http://192.168.1.104"
 ).rstrip("/")
 
-# Spidey TTS board (Christopher Daniel Barnes / Marvel SQ — common Spidey board)
+# Peanut Ana + dual-key cloud TTS
+ANA_VOICE = os.environ.get("TRACE_E_ANA_VOICE") or os.environ.get("ANA_VOICE") or "en-US-AnaNeural"
+ANA_RATE = os.environ.get("TRACE_E_ANA_RATE") or os.environ.get("ANA_RATE") or "-5%"
+GROQ_API_KEY = (os.environ.get("GROQ_API_KEY") or "").strip()
+GEMINI_API_KEY = (
+    os.environ.get("GEMINI_API_KEY")
+    or os.environ.get("GOOGLE_API_KEY")
+    or os.environ.get("GOOGLE_GENAI_API_KEY")
+    or ""
+).strip()
+GROQ_TTS_MODEL = (
+    os.environ.get("GROQ_TTS_MODEL") or "canopylabs/orpheus-v1-english"
+).strip()
+# Hannah ≈ young/friendly English Orpheus voice (Peanut-ish for Ollie)
+GROQ_TTS_VOICE = (os.environ.get("GROQ_TTS_VOICE") or "hannah").strip()
+GEMINI_TTS_MODEL = (
+    os.environ.get("GEMINI_TTS_MODEL")
+    or "gemini-2.5-flash-preview-tts"
+).strip()
+# Kore ≈ bright kid-friendly Gemini prebuilt voice
+GEMINI_TTS_VOICE = (os.environ.get("GEMINI_TTS_VOICE") or "Kore").strip()
+# peanut-auto | peanut | ana | groq | gemini | spidey | pyttsx3
+DEFAULT_TTS_ENGINE = (
+    os.environ.get("TRACE_E_TTS_ENGINE") or "peanut-auto"
+).strip().lower()
+
+# Spidey TTS board (optional secondary)
 SPIDEY_TTS_URL = os.environ.get(
     "TRACE_E_101_TTS_URL",
     "https://www.101soundboards.com/tts/1038002-spider-man-christopher-daniel-barnes-marvel-sq-tts-text-to-speech",
 )
 SPIDEY_BOARD_ID = os.environ.get("TRACE_E_101_BOARD_ID", "1038002")
+SPIDEY_TTS_ENABLED = (os.environ.get("TRACE_E_SPIDEY_TTS") or "1").strip().lower() not in (
+    "0",
+    "false",
+    "off",
+    "no",
+)
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -149,8 +214,281 @@ def _http_post_form(url: str, data: dict, timeout: float = 45.0) -> Tuple[int, b
         return int(resp.status), resp.read(), resp.headers.get("Content-Type", "")
 
 
+def _key_status() -> Dict[str, Any]:
+    return {
+        "groq": bool(GROQ_API_KEY),
+        "gemini": bool(GEMINI_API_KEY),
+        "dotenv_loaded": list(_DOTENV_LOADED),
+        "ana_voice": ANA_VOICE,
+        "groq_tts_model": GROQ_TTS_MODEL,
+        "groq_tts_voice": GROQ_TTS_VOICE,
+        "gemini_tts_model": GEMINI_TTS_MODEL,
+        "gemini_tts_voice": GEMINI_TTS_VOICE,
+        "default_engine": DEFAULT_TTS_ENGINE,
+        "spidey_optional": SPIDEY_TTS_ENABLED,
+    }
+
+
+def _ffmpeg_exe() -> Optional[str]:
+    import shutil
+
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _write_pcm_wav(path: Path, pcm: bytes, rate: int = 16000, channels: int = 1) -> Path:
+    with wave.open(str(path), "wb") as dst:
+        dst.setnchannels(channels)
+        dst.setsampwidth(2)
+        dst.setframerate(rate)
+        dst.writeframes(pcm)
+    return path
+
+
+def _resample_pcm16_mono(pcm: bytes, src_rate: int, dst_rate: int = 16000) -> bytes:
+    if not pcm or src_rate <= 0 or src_rate == dst_rate:
+        return pcm
+    samples = struct.unpack("<" + "h" * (len(pcm) // 2), pcm)
+    ratio = float(dst_rate) / float(src_rate)
+    out_n = max(1, int(len(samples) * ratio))
+    out = []
+    for i in range(out_n):
+        src_i = min(len(samples) - 1, int(i / ratio))
+        out.append(samples[src_i])
+    return struct.pack("<" + "h" * len(out), *out)
+
+
+def ensure_wav_16k_mono(src: Path) -> Optional[Path]:
+    """Normalize any audio file to 16 kHz mono PCM WAV for ESP amp."""
+    if not src or not src.exists():
+        return None
+    out = CACHE_DIR / f"{src.stem}_16k.wav"
+    if out.exists() and out.stat().st_size > 44 and src.suffix.lower() == ".wav":
+        # Still re-check rate below if cheap
+        pass
+    ffmpeg = _ffmpeg_exe()
+    if ffmpeg:
+        try:
+            import subprocess
+
+            cmd = [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(src),
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                str(out),
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if out.exists() and out.stat().st_size > 44:
+                return out
+        except Exception:
+            pass
+    if src.suffix.lower() == ".mp3":
+        return mp3_to_wav_16k(src)
+    if src.suffix.lower() == ".wav":
+        try:
+            with wave.open(str(src), "rb") as w:
+                nch, sw, fr, nframes, _, _ = w.getparams()[:6]
+                frames = w.readframes(nframes)
+            if sw == 1:
+                frames = b"".join(struct.pack("<h", (b - 128) * 256) for b in frames)
+                sw = 2
+            if nch > 1 and sw == 2:
+                samples = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+                mono = [
+                    int(sum(samples[i : i + nch]) / nch) for i in range(0, len(samples), nch)
+                ]
+                frames = struct.pack("<" + "h" * len(mono), *mono)
+                nch = 1
+            if fr != 16000 and sw == 2 and nch == 1:
+                frames = _resample_pcm16_mono(frames, fr, 16000)
+                fr = 16000
+            return _write_pcm_wav(out, frames, rate=fr or 16000, channels=1)
+        except Exception:
+            return src if src.exists() else None
+    return None
+
+
+def synth_edge_ana_wav(text: str) -> Path:
+    """Peanut Ana voice via edge-tts (en-US-AnaNeural) → 16 kHz mono WAV."""
+    import asyncio
+
+    import edge_tts
+
+    text = (text or "").strip()
+    key = hashlib.sha1(f"ana|{ANA_VOICE}|{ANA_RATE}|{text}".encode("utf-8")).hexdigest()[:16]
+    wav_path = CACHE_DIR / f"ana_{key}.wav"
+    if wav_path.exists() and wav_path.stat().st_size > 44:
+        return wav_path
+    mp3_path = CACHE_DIR / f"ana_{key}.mp3"
+
+    async def _go() -> None:
+        communicate = edge_tts.Communicate(text, ANA_VOICE, rate=ANA_RATE)
+        await communicate.save(str(mp3_path))
+
+    try:
+        asyncio.run(_go())
+    except RuntimeError:
+        # Nested event loop (rare) — use a fresh loop in a thread
+        import concurrent.futures
+
+        def _runner() -> None:
+            asyncio.run(_go())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(_runner).result(timeout=40)
+
+    norm = ensure_wav_16k_mono(mp3_path)
+    if not norm:
+        raise RuntimeError("edge-tts Ana produced no wav (ffmpeg/mp3 convert failed)")
+    if norm != wav_path:
+        try:
+            wav_path.write_bytes(norm.read_bytes())
+        except Exception:
+            return norm
+    return wav_path
+
+
+def synth_groq_tts_wav(text: str) -> Path:
+    """Groq Orpheus/PlayAI TTS → 16 kHz mono WAV (needs GROQ_API_KEY)."""
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY missing")
+    from groq import Groq
+
+    text = (text or "").strip()
+    # Light vocal direction — bubbly Peanut-for-Ollie, not a tour guide
+    spoken = f"[cheerful, friendly kid companion] {text}"
+    key = hashlib.sha1(
+        f"groq|{GROQ_TTS_MODEL}|{GROQ_TTS_VOICE}|{spoken}".encode("utf-8")
+    ).hexdigest()[:16]
+    wav_path = CACHE_DIR / f"groq_{key}.wav"
+    if wav_path.exists() and wav_path.stat().st_size > 44:
+        return wav_path
+
+    client = Groq(api_key=GROQ_API_KEY)
+    raw_path = CACHE_DIR / f"groq_{key}_raw.wav"
+    attempts = [
+        (GROQ_TTS_MODEL, GROQ_TTS_VOICE, spoken),
+        # Orpheus may require console terms acceptance — PlayAI still works on many keys
+        ("playai-tts", "Cheyenne-PlayAI", text),
+        ("playai-tts", "Fritz-PlayAI", text),
+    ]
+    last_err: Optional[Exception] = None
+    for model, voice, inp in attempts:
+        try:
+            response = client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=inp,
+                response_format="wav",
+            )
+            if hasattr(response, "write_to_file"):
+                response.write_to_file(str(raw_path))
+            else:
+                data = getattr(response, "read", None)
+                if callable(data):
+                    raw_path.write_bytes(data())
+                else:
+                    raw_path.write_bytes(bytes(response))
+            if raw_path.exists() and raw_path.stat().st_size > 44:
+                break
+        except Exception as exc:
+            last_err = exc
+            continue
+    else:
+        raise RuntimeError(f"Groq TTS failed: {last_err}")
+
+    norm = ensure_wav_16k_mono(raw_path)
+    if not norm:
+        raise RuntimeError("Groq TTS convert failed")
+    if norm != wav_path:
+        wav_path.write_bytes(norm.read_bytes())
+    return wav_path
+
+
+def synth_gemini_tts_wav(text: str) -> Path:
+    """Gemini native TTS → 16 kHz mono WAV (needs GEMINI_API_KEY / GOOGLE_API_KEY)."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY / GOOGLE_API_KEY missing")
+    from google import genai
+    from google.genai import types
+
+    text = (text or "").strip()
+    spoken = f"Say cheerfully, like a bubbly kid-friendly robot friend named Peanut: {text}"
+    key = hashlib.sha1(
+        f"gem|{GEMINI_TTS_MODEL}|{GEMINI_TTS_VOICE}|{spoken}".encode("utf-8")
+    ).hexdigest()[:16]
+    wav_path = CACHE_DIR / f"gemini_{key}.wav"
+    if wav_path.exists() and wav_path.stat().st_size > 44:
+        return wav_path
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    models_try = [
+        GEMINI_TTS_MODEL,
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-pro-preview-tts",
+        "gemini-3.1-flash-tts-preview",
+    ]
+    last_err: Optional[Exception] = None
+    pcm: Optional[bytes] = None
+    rate = 24000
+    for model in models_try:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=spoken,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=GEMINI_TTS_VOICE,
+                            )
+                        )
+                    ),
+                ),
+            )
+            part = response.candidates[0].content.parts[0].inline_data
+            data = part.data
+            if isinstance(data, str):
+                import base64
+
+                pcm = base64.b64decode(data)
+            else:
+                pcm = bytes(data)
+            mime = (getattr(part, "mime_type", None) or "") + ""
+            m = re.search(r"rate=(\d+)", mime, re.I)
+            if m:
+                rate = int(m.group(1))
+            if pcm and len(pcm) > 100:
+                break
+        except Exception as exc:
+            last_err = exc
+            pcm = None
+            continue
+    if not pcm:
+        raise RuntimeError(f"Gemini TTS failed: {last_err}")
+    pcm16 = _resample_pcm16_mono(pcm, rate, 16000)
+    return _write_pcm_wav(wav_path, pcm16, rate=16000, channels=1)
+
+
 def try_101_spidey_tts(text: str) -> Optional[Path]:
     """Best-effort 101Soundboards Spidey TTS → cached mp3. Returns None on CF/block/fail."""
+    if not SPIDEY_TTS_ENABLED:
+        return None
     text = (text or "").strip()
     if not text:
         return None
@@ -632,41 +970,105 @@ def handle_chirp(
     return {"ok": False, "error": "play failed", "detail": detail, "file": path.name}
 
 
-def handle_speak(text: str, esp_base: Optional[str] = None) -> dict:
+def _normalize_engine(name: Optional[str]) -> str:
+    e = (name or DEFAULT_TTS_ENGINE or "peanut-auto").strip().lower()
+    aliases = {
+        "auto": "peanut-auto",
+        "peanut": "peanut-auto",
+        "ana": "ana",
+        "edge": "ana",
+        "edge-tts": "ana",
+        "peanut-ana": "ana",
+        "groq": "groq",
+        "gemini": "gemini",
+        "google": "gemini",
+        "spidey": "spidey",
+        "101": "spidey",
+        "101soundboards": "spidey",
+        "pyttsx3": "pyttsx3",
+        "robot": "pyttsx3",
+    }
+    return aliases.get(e, e)
+
+
+def _peanut_engine_chain(force: str) -> List[str]:
+    """Ordered TTS engines. Peanut Ana + dual API keys first; Spidey optional; pyttsx3 last."""
+    force = _normalize_engine(force)
+    if force in ("ana", "groq", "gemini", "spidey", "pyttsx3"):
+        # Still allow soft fallbacks after the forced primary
+        rest = [x for x in ("ana", "groq", "gemini", "spidey", "pyttsx3") if x != force]
+        if force == "spidey":
+            return [force] + [x for x in rest if x != "pyttsx3"] + ["pyttsx3"]
+        return [force] + rest
+    # peanut-auto: true Ana voice, then Groq, then Gemini, optional Spidey, pyttsx3
+    chain = ["ana", "groq", "gemini"]
+    if SPIDEY_TTS_ENABLED:
+        chain.append("spidey")
+    chain.append("pyttsx3")
+    return chain
+
+
+def _synth_by_engine(engine: str, text: str) -> Tuple[Optional[Path], Optional[str]]:
+    """Return (wav_path, error)."""
+    try:
+        if engine == "ana":
+            return synth_edge_ana_wav(text), None
+        if engine == "groq":
+            return synth_groq_tts_wav(text), None
+        if engine == "gemini":
+            return synth_gemini_tts_wav(text), None
+        if engine == "spidey":
+            mp3 = try_101_spidey_tts(text)
+            if not mp3:
+                return None, "101soundboards unavailable"
+            wav = mp3_to_wav_16k(mp3) or ensure_wav_16k_mono(mp3)
+            if not wav:
+                return None, "spidey mp3->wav failed"
+            return wav, None
+        if engine == "pyttsx3":
+            return synth_pyttsx3_wav(text), None
+        return None, f"unknown engine {engine}"
+    except Exception as exc:
+        return None, str(exc)
+
+
+def handle_speak(
+    text: str,
+    esp_base: Optional[str] = None,
+    engine: Optional[str] = None,
+) -> dict:
     text = (text or "").strip()
     if not text:
         return {"ok": False, "error": "empty"}
     esp = discover_esp(esp_base or DEFAULT_ESP)
-    engine = None
+    want = _normalize_engine(engine)
+    chain = _peanut_engine_chain(want)
+    errors: Dict[str, str] = {}
     wav: Optional[Path] = None
-    err_101 = None
+    used = None
 
-    mp3 = None
-    try:
-        mp3 = try_101_spidey_tts(text)
-    except Exception as exc:
-        err_101 = str(exc)
-
-    if mp3:
-        engine = "101soundboards"
-        wav = mp3_to_wav_16k(mp3)
-        if wav is None:
-            try:
-                wav = synth_pyttsx3_wav(text)
-                engine = "101soundboards+pyttsx3-wav"
-            except Exception:
-                wav = None
+    for eng in chain:
+        path, err = _synth_by_engine(eng, text)
+        if path and path.exists() and path.stat().st_size > 44:
+            wav = path
+            used = eng if eng != "ana" else "peanut-ana/edge-tts"
+            if eng == "groq":
+                used = f"groq/{GROQ_TTS_VOICE}"
+            elif eng == "gemini":
+                used = f"gemini/{GEMINI_TTS_VOICE}"
+            elif eng == "spidey":
+                used = "101soundboards"
+            break
+        errors[eng] = err or "failed"
 
     if wav is None:
-        try:
-            wav = synth_pyttsx3_wav(text)
-            engine = "pyttsx3"
-        except Exception as exc:
-            return {
-                "ok": False,
-                "error": f"tts failed: {exc}",
-                "err_101": err_101,
-            }
+        return {
+            "ok": False,
+            "error": "tts failed (all engines)",
+            "tried": chain,
+            "errors": errors,
+            "keys": _key_status(),
+        }
 
     # Loudness restore — beep-kill era left peanut vol=0; Trace has no volume API
     wav = amplify_wav_inplace(wav, gain=2.6)
@@ -676,39 +1078,38 @@ def handle_speak(text: str, esp_base: Optional[str] = None) -> dict:
     ok_esp, detail = push_wav_to_esp(esp, wav)
     if ok_esp:
         played_on = "esp"
-        # Also mirror to laptop briefly only if ESP path was tentative play_url
         if "play_url" in detail and "play_wav" in detail:
-            # play_wav failed earlier — don't trust play_url alone; ensure user hears
             if play_laptop(wav):
                 played_on = "laptop+esp?"
                 detail = detail + "; mirrored to laptop (play_url untrusted)"
     else:
-        play_path = wav
-        if play_laptop(play_path):
+        if play_laptop(wav):
             played_on = "laptop"
             detail = f"esp failed ({detail})"
-        elif mp3 and play_laptop(mp3):
-            played_on = "laptop"
-            engine = "101soundboards"
-            detail = f"esp failed ({detail}); laptop mp3"
         else:
             return {
                 "ok": False,
                 "error": "could not play on ESP or laptop",
                 "esp": esp,
-                "engine": engine,
+                "engine": used,
                 "detail": detail,
+                "errors": errors,
             }
 
     return {
         "ok": True,
         "text": text,
-        "engine": engine,
+        "engine": used,
+        "requested_engine": want,
         "played_on": played_on,
         "esp": esp,
         "wav": str(wav.name),
         "detail": detail,
-        "err_101": err_101,
+        "errors": errors or None,
+        "keys": {
+            "groq": bool(GROQ_API_KEY),
+            "gemini": bool(GEMINI_API_KEY),
+        },
         "volume_note": "wav gain×2.6; Trace has no /api/volume (peanut mute N/A)",
     }
 
@@ -758,6 +1159,20 @@ class TraceHandler(SimpleHTTPRequestHandler):
                     "port": PORT,
                     "proxies": ["/api/esp/stream", "/api/esp/drive", "/api/esp/status"],
                     "sfx": sorted(p.name for p in SFX_DIR.glob("*.wav")),
+                    "tts": {
+                        "default": DEFAULT_TTS_ENGINE,
+                        "engines": [
+                            "peanut-auto",
+                            "ana",
+                            "groq",
+                            "gemini",
+                            "spidey",
+                            "pyttsx3",
+                        ],
+                        "primary": "peanut-ana (edge-tts) -> groq -> gemini",
+                        "keys": _key_status(),
+                    },
+                    "chirps": CHIRPS_DEFAULT,
                 }
             )
             self._send(code, body, ctype)
@@ -880,8 +1295,13 @@ class TraceHandler(SimpleHTTPRequestHandler):
 
         if path in ("/api/speak", "/api/say"):
             esp = data.get("esp") or data.get("esp_base")
+            engine = data.get("engine") or data.get("voice") or data.get("tts")
             try:
-                result = handle_speak(str(data.get("text") or data.get("say") or ""), esp)
+                result = handle_speak(
+                    str(data.get("text") or data.get("say") or ""),
+                    esp,
+                    engine=str(engine) if engine else None,
+                )
             except Exception as exc:
                 result = {"ok": False, "error": str(exc), "trace": traceback.format_exc()[-400:]}
             code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
@@ -896,7 +1316,16 @@ def main() -> int:
     httpd = ThreadingHTTPServer((HOST, PORT), TraceHandler)
     print(f"Trace-E Web-Quarters  http://{HOST}:{PORT}/", flush=True)
     print(f"Talk TO Trace         POST /api/talk", flush=True)
-    print(f"Talk THROUGH Trace    POST /api/speak", flush=True)
+    print(f"Talk THROUGH Trace    POST /api/speak  (engine={DEFAULT_TTS_ENGINE})", flush=True)
+    print(
+        "TTS Peanut primary    Ana/edge-tts -> Groq -> Gemini -> Spidey? -> pyttsx3",
+        flush=True,
+    )
+    print(
+        f"API keys              groq={'yes' if GROQ_API_KEY else 'no'}  "
+        f"gemini={'yes' if GEMINI_API_KEY else 'no'}  dotenv={len(_DOTENV_LOADED)} file(s)",
+        flush=True,
+    )
     print(f"Chirps                POST /api/chirp (default={CHIRPS_DEFAULT})", flush=True)
     print(f"ESP proxy             GET  /api/esp/stream  /api/esp/drive  /api/esp/status", flush=True)
     print(f"ESP default           {DEFAULT_ESP}", flush=True)

@@ -694,6 +694,20 @@
       background: rgba(255,255,255,.94);
       outline: none;
     }
+    .tts-row select {
+      flex: 0 1 180px;
+      max-width: 100%;
+      border: 2px solid #fff;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font: inherit;
+      font-weight: 700;
+      font-size: .72rem;
+      background: rgba(255,255,255,.94);
+      color: #1A2430;
+      outline: none;
+      cursor: pointer;
+    }
     .tts-row button {
       border: 2px solid #fff;
       border-radius: 999px;
@@ -1016,13 +1030,21 @@
 
               <div class="speak-panel talk-through">
                 <label for="ttsText">Talk through Trace · Speak / Say</label>
-                <span class="sublabel">Trace says this out loud on the ESP amp (Spidey TTS → robot fallback)</span>
+                <span class="sublabel">Peanut Ana voice (edge-tts / Groq / Gemini) → ESP amp · Spidey optional</span>
                 <div class="tts-row">
                   <input id="ttsText" type="text" maxlength="120"
-                    placeholder="Webs up, WEB-Quarters!" value="Webs up, WEB-Quarters!" />
+                    placeholder="Hey Ollie — webs up!" value="Hey Ollie, Peanut voice is back!" />
+                  <select id="ttsEngine" title="TTS engine" aria-label="TTS engine">
+                    <option value="peanut-auto" selected>Peanut auto (Ana→Groq→Gemini)</option>
+                    <option value="ana">Peanut Ana (edge-tts)</option>
+                    <option value="groq">Groq TTS</option>
+                    <option value="gemini">Gemini TTS</option>
+                    <option value="spidey">Spidey 101 (optional)</option>
+                    <option value="pyttsx3">pyttsx3 (last resort)</option>
+                  </select>
                   <button type="button" id="speakBtn">Say!</button>
                 </div>
-                <p class="tts-note" id="speakNote">101Soundboards → ESP amp · pyttsx3 fallback</p>
+                <p class="tts-note" id="speakNote">Peanut Ana → Groq/Gemini → ESP amp</p>
               </div>
 
               <div class="esp-ip-row" title="ESP base URL">
@@ -1064,6 +1086,7 @@
     const driveStatus = document.getElementById('driveStatus');
     const speakBtn = document.getElementById('speakBtn');
     const ttsText = document.getElementById('ttsText');
+    const ttsEngine = document.getElementById('ttsEngine');
     const speakNote = document.getElementById('speakNote');
     const talkToBtn = document.getElementById('talkToBtn');
     const talkToText = document.getElementById('talkToText');
@@ -1507,13 +1530,14 @@
         speakNote.textContent = 'Type words for Trace to say.';
         return;
       }
-      speakNote.textContent = 'Speaking… synthesizing…';
+      const engine = (ttsEngine && ttsEngine.value) || 'peanut-auto';
+      speakNote.textContent = 'Speaking… synthesizing (' + engine + ')…';
       speakBtn.textContent = '…';
       try {
         const r = await fetch(BRAIN + '/api/speak', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: msg, esp: espBase }),
+          body: JSON.stringify({ text: msg, esp: espBase, engine }),
         });
         const j = await r.json();
         if (j.ok) {
@@ -1521,7 +1545,7 @@
           if (where === 'esp') {
             speakNote.textContent = 'Speaking on amp… (' + (j.engine || 'tts') + ')';
           } else if (String(where).includes('laptop')) {
-            speakNote.textContent = 'Speaking on laptop (fallback)… · ' + (j.detail || '');
+            speakNote.textContent = 'Speaking on laptop… · ' + (j.engine || '') + ' · ' + (j.detail || '');
           } else {
             speakNote.textContent = 'Said via ' + (j.engine || '?') + ' → ' + where;
           }

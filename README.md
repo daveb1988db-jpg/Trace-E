@@ -21,7 +21,30 @@ pip install -r requirements.txt
 3. Select your ESP32 board + port, then **Upload**.
 4. Serial Monitor shows the board IP when WiFi connects (or note it from your router).
 
-### 2. Run speak_server (local brain)
+### 2. API keys for Peanut voice (Ollie TTS)
+
+Talk *through* Trace uses **Peanut Ana** as the primary voice (same character as peanut-robot), then dual cloud TTS:
+
+| Order | Engine | Needs |
+|-------|--------|--------|
+| 1 | **edge-tts** `en-US-AnaNeural` (Peanut Ana) | free / no key — this is Peanut's real voice |
+| 2 | **Groq** Orpheus TTS | `GROQ_API_KEY` (+ accept Orpheus terms once in [Groq console](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english)) |
+| 3 | **Gemini** TTS | `GEMINI_API_KEY` or `GOOGLE_API_KEY` (Gemini TTS-capable key) |
+| 4 | Spidey 101Soundboards (optional) | network |
+| 5 | pyttsx3 | last-resort laptop voice only |
+
+If Groq/Gemini TTS aren't ready yet, **Ana still speaks** (same voice peanut-robot used). Cloud engines engage automatically once keys + terms are valid.
+
+Copy `.env.example` → `.env` in the Trace-E repo root **or** keep keys in `peanut-robot/.env` — `speak_server` loads both via dotenv (never commit real `.env`).
+
+```bash
+copy .env.example .env
+# set GROQ_API_KEY=... and GEMINI_API_KEY=...
+```
+
+Optional overrides: `TRACE_E_TTS_ENGINE`, `GROQ_TTS_VOICE`, `GEMINI_TTS_VOICE`, `TRACE_E_ANA_VOICE`.
+
+### 3. Run speak_server (local brain)
 
 From the repo root:
 
@@ -35,15 +58,20 @@ Serves on **http://0.0.0.0:8787** by default:
 |------|---------|
 | `/` | Desktop `mock_ui.html` (WEB-Quarters) |
 | `/android_mock.html` | Portrait phone mock + drive stick |
-| `POST /api/speak` | Talk *through* Trace (TTS → ESP amp) |
+| `POST /api/speak` | Talk *through* Trace (Peanut TTS → ESP amp) |
 | `POST /api/talk` | Talk *to* Trace (chat stub) |
+| `GET /api/health` | Status + which TTS keys are set |
 
-Optional env:
+`POST /api/speak` JSON: `{ "text": "...", "engine": "peanut-auto", "esp": "http://192.168.1.104" }`  
+Response includes `engine` used (e.g. `peanut-ana/edge-tts`, `groq/hannah`, `gemini/Kore`).
+
+Other optional env:
 
 - `TRACE_E_ESP_BASE` — ESP base URL (default `http://192.168.1.104`)
 - `TRACE_E_SPEAK_PORT` — server port (default `8787`)
+- `TRACE_E_CHIRPS` — default `off`
 
-### 3. Open the UIs
+### 4. Open the UIs
 
 With speak_server running:
 
@@ -61,14 +89,14 @@ PyQt desktop deck (optional):
 python desktop/trace_e_control.py
 ```
 
-### 4. Connect the ESP
+### 5. Connect the ESP
 
 1. Put the ESP IP in the UI (**Set ESP**), e.g. `http://192.168.1.104`.
 2. Drive with WASD or the stick — motor commands go to the ESP HTTP API.
-3. **Talk through Trace** uses speak_server → ESP amp (laptop TTS fallback if ESP play fails).
+3. **Talk through Trace** uses Peanut Ana / Groq / Gemini → WAV → ESP amp (laptop fallback if ESP play fails).
 4. Camera stream (when available): ESP `:82/stream` — use **Flip cam** if the mount is upside-down.
 
-Same WiFi for laptop/phone and the bot is required.
+Same WiFi for laptop/phone and the bot is required. Chirps stay **off** by default.
 
 ## Android app
 
@@ -89,4 +117,4 @@ Do **not** commit:
 - `firmware/**/wifi_config.h`
 - `.env`, API keys, keystores, `local.properties`
 
-Use `wifi_config.h.example` as the template only.
+Use `.env.example` and `wifi_config.h.example` as templates only.
