@@ -1,0 +1,61 @@
+# Secrets — never commit
+**/wifi_config.h
+!./**/wifi_config.h.example
+.env
+.env.*
+!.env.example
+**/secrets/
+**/_secrets/
+**/_secrets_backup/
+**/local.properties
+**/*.keystore
+**/*.jks
+**/google-services.json
+**/api_keys.*
+**/*credentials*
+**/service-account*.json
+
+# TTS / local caches
+desktop/_tts_cache/
+desktop/_cam_debug/
+_tts_page.html
+**/__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Arduino / ESP / native build artifacts
+**/build/
+**/build_*/
+**/cmake-build-*/
+*.bin
+*.elf
+*.map
+*.o
+*.a
+*.d
+*.hex
+*.ino.with_bootloader.*
+
+# Android build outputs
+**/android/**/build/
+**/.gradle/
+**/captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE / OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+*.swp
+*~
+desktop.ini

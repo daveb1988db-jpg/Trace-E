@@ -1,0 +1,14 @@
+#pragma once
+/*
+ * Copy to wifi_config.h and set your WiFi:
+ *   copy wifi_config.h.example wifi_config.h
+ *
+ * wifi_config.h is gitignored — never commit real passwords.
+ */
+
+#define WIFI_SSID "your-ssid"
+#define WIFI_PASSWORD "your-password"
+
+/* Optional — laptop / brain host for some features */
+#define PEANUT_HOST "192.168.1.100"
+#define PEANUT_PORT 8765

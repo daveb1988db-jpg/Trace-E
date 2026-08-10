@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Trace-E · Android Mock · WEB-Quarters</title>
+  <style>
+    :root {
+      --spidey-red: #E53935;
+      --spidey-red-deep: #C62828;
+      --web-blue: #1E88E5;
+      --web-blue-deep: #1565C0;
+      --frame-red: #7A2A28;
+      --ghost-pink: #E75480;
+      --ghost-purple: #7B5EA7;
+      --spin-yellow: #FFD54F;
+      --ink: #1A2430;
+      --white: #FFFFFF;
+      --font: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+      --display: "Comic Sans MS", "Trebuchet MS", cursive, sans-serif;
+      --phone-w: 390px;
+      --phone-h: 844px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--ink);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px 40px;
+      background:
+        radial-gradient(ellipse at 20% 10%, rgba(255,255,255,.55), transparent 45%),
+        radial-gradient(ellipse at 80% 90%, rgba(30,136,229,.25), transparent 40%),
+        repeating-linear-gradient(0deg, transparent 0 36px, rgba(255,255,255,.12) 36px 38px),
+        linear-gradient(165deg, #9FD4F5 0%, #7FC0EA 50%, #5BA8D8 100%);
+    }
+
+    .stage-label {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .78rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--web-blue-deep);
+      background: rgba(255,255,255,.88);
+      border: 2px solid #fff;
+      border-radius: 999px;
+      padding: 6px 14px;
+      box-shadow: 0 4px 14px rgba(40,90,140,.2);
+      white-space: nowrap;
+    }
+
+    /* ===== PHONE CHASSIS ===== */
+    .phone {
+      width: min(100%, var(--phone-w));
+      height: min(92vh, var(--phone-h));
+      max-height: 900px;
+      position: relative;
+      border-radius: 42px;
+      padding: 12px;
+      background: linear-gradient(145deg, #2A2E36 0%, #121418 45%, #0A0C10 100%);
+      box-shadow:
+        0 0 0 2px #3A3F4A,
+        0 0 0 5px #0E1014,
+        0 28px 50px rgba(20,50,80,.45),
+        inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    .phone::before {
+      content: "";
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 108px;
+      height: 28px;
+      background: #0A0C10;
+      border-radius: 18px;
+      z-index: 20;
+      box-shadow: inset 0 0 0 1px #222;
+    }
+    .phone::after {
+      content: "";
+      position: absolute;
+      top: 26px;
+      left: calc(50% + 28px);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #4A7AB0, #0A2030 70%);
+      z-index: 21;
+      box-shadow: 0 0 0 2px #111;
+    }
+    .side-btn {
+      position: absolute;
+      right: -3px;
+      width: 3px;
+      border-radius: 2px 0 0 2px;
+      background: #3A3F4A;
+    }
+    .side-btn.pwr { top: 160px; height: 56px; }
+    .side-btn.vol-up { left: -3px; right: auto; top: 140px; height: 36px; border-radius: 0 2px 2px 0; }
+    .side-btn.vol-dn { left: -3px; right: auto; top: 186px; height: 36px; border-radius: 0 2px 2px 0; }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      border-radius: 32px;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(180deg, #B8E4FF 0%, #9FD4F5 40%, #7FC0EA 100%);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Android status bar */
+    .status-bar {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px 6px;
+      font-size: .7rem;
+      font-weight: 800;
+      color: var(--ink);
+      opacity: .85;
+    }
+    .status-bar .icons { display: flex; gap: 6px; align-items: center; }
+    .status-bar .dot {
+      width: 14px; height: 8px;
+      border: 1.5px solid currentColor;
+      border-radius: 2px;
+      position: relative;
+    }
+    .status-bar .dot::after {
+      content: "";
+      position: absolute;
+      inset: 1.5px 3px 1.5px 1.5px;
+      background: currentColor;
+      border-radius: 1px;
+    }
+
+    /* App chrome */
+    .app-bar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 14px 10px;
+    }
+    .app-bar .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      object-position: center top;
+      border: 2.5px solid var(--spidey-red);
+      box-shadow: 0 2px 0 rgba(0,0,0,.12);
+      background: #fff;
+    }
+    .app-bar h1 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: #fff;
+      text-transform: uppercase;
+      text-shadow: 0 2px 0 rgba(30,80,130,.35), 0 0 12px rgba(255,255,255,.4);
+      line-height: 1.1;
+    }
+    .app-bar .sub {
+      font-size: .62rem;
+      font-weight: 800;
+      color: var(--web-blue-deep);
+      background: rgba(255,255,255,.7);
+      border-radius: 999px;
+      padding: 2px 8px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+
+    .team-row {
+      flex: 0 0 auto;
+      display: flex;
+      gap: 8px;
+      padding: 0 12px 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .team-row::-webkit-scrollbar { display: none; }
+    .mini-chip {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,.9);
+      border: 2.5px solid var(--ink);
+      border-radius: 999px;
+      padding: 3px 10px 3px 3px;
+      font-size: .65rem;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .mini-chip.spidey { border-color: var(--spidey-red); }
+    .mini-chip.ghost { border-color: var(--ghost-pink); }
+    .mini-chip.spin { border-color: #1A1A1A; }
+    .mini-chip img {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      object-fit: cover;
+      object-position: top;
+    }
+
+    .scroll {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 10px 8px;
+      scrollbar-width: thin;
+    }
+
+    /* Cam with simplified speakers */
+    .cam-block {
+      display: grid;
+      grid-template-columns: 28px 1fr 28px;
+      gap: 0;
+      align-items: stretch;
+      margin-bottom: 8px;
+    }
+    .spk-mini {
+      border-radius: 10px;
+      background:
+        repeating-linear-gradient(180deg,
+          #0B3A6E 0 5px, #1565C0 5px 9px, #42A5F5 9px 12px, #0D47A1 12px 15px);
+      box-shadow: inset 0 0 0 2px #083056, 0 4px 0 rgba(13,48,86,.35);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      align-items: center;
+      padding: 8px 0;
+      min-height: 160px;
+    }
+    .spk-mini .drv {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #333, #000 70%);
+      border: 1.5px solid #111;
+    }
+    .spk-mini .drv.lg { width: 16px; height: 16px; }
+
+    .cam-frame {
+      position: relative;
+      border-radius: 22px;
+      background: linear-gradient(180deg, #C85A56, var(--frame-red) 50%, #5A1816);
+      padding: 18px 10px 10px;
+      box-shadow: inset 0 0 0 3px rgba(255,190,180,.25), 0 8px 16px rgba(40,90,140,.25);
+    }
+    .bezel-dot {
+      position: absolute;
+      top: 5px; left: 50%;
+      transform: translateX(-50%);
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #4A6, #111 60%, #000);
+      border: 2px solid #8B2E2C;
+      z-index: 3;
+    }
+    .cam-viewport {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border-radius: 16px;
+      overflow: hidden;
+      background: linear-gradient(160deg, #64B5F6, #1E88E5);
+      border: 3px solid #0A2748;
+    }
+    .cam-viewport.live { background: #0a1a33; }
+    .cam-viewport.flip-v #mockCam { transform: scaleY(-1); }
+    .cam-viewport.flip-180 #mockCam { transform: rotate(180deg); }
+    #mockCam {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    .cam-viewport.live #mockCam { display: block; }
+    .cam-ph {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      text-align: center;
+      color: #fff;
+      font-weight: 900;
+      font-size: .95rem;
+      text-shadow: 0 2px 8px rgba(0,40,80,.4);
+      padding: 12px;
+      background:
+        radial-gradient(circle at 50% 40%, rgba(255,255,255,.28), transparent 55%),
+        linear-gradient(160deg, rgba(30,136,229,.4), rgba(21,101,192,.5));
+    }
+    .cam-viewport.live .cam-ph { display: none; }
+    .live-pill {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 4;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .62rem;
+      color: #fff;
+      background: linear-gradient(180deg, #FF6A4A, var(--spidey-red));
+      border: 2px solid #fff;
+      border-radius: 999px;
+      padding: 3px 8px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { filter: brightness(1); }
+      50% { filter: brightness(1.12); }
+    }
+    .crest {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      opacity: .16; pointer-events: none;
+    }
+    .crest svg { width: 38%; }
+
+    /* Red console */
+    .console {
+      background: linear-gradient(180deg, #FF6B63 0%, var(--spidey-red) 45%, var(--spidey-red-deep));
+      border-radius: 20px;
+      border: 3px solid #8B1E1C;
+      box-shadow: 0 6px 0 #9E2A28, inset 0 4px 10px rgba(255,255,255,.2);
+      padding: 12px 10px 14px;
+      margin-bottom: 8px;
+    }
+
+    .holo-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .holo {
+      text-align: center;
+      padding: 6px 8px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(180,240,255,.65), rgba(30,136,229,.3));
+      border: 2px solid rgba(255,255,255,.85);
+      color: #063A5C;
+    }
+    .holo .name { font-size: .55rem; font-weight: 900; text-transform: uppercase; }
+    .holo .val {
+      font-family: var(--display);
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: var(--web-blue-deep);
+      line-height: 1;
+    }
+
+    .drive-zone {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .pads-wrap { text-align: center; }
+    .pads-wrap .label {
+      margin: 0 0 6px;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .72rem;
+      color: #fff;
+      text-transform: uppercase;
+      text-shadow: 0 1px 0 rgba(0,0,0,.25);
+    }
+    .pads {
+      display: grid;
+      grid-template-areas: ". w ." "a s d";
+      grid-template-columns: repeat(3, 48px);
+      gap: 6px;
+      justify-content: center;
+      user-select: none;
+    }
+    .pad {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      border: 2.5px solid #fff;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 1.05rem;
+      color: #fff;
+      cursor: pointer;
+      display: grid; place-items: center;
+      background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.35), transparent 45%),
+                  linear-gradient(165deg, #FF6A4A, var(--spidey-red-deep));
+      box-shadow: 0 4px 0 #6D1412, inset 0 -4px 0 rgba(0,0,0,.18);
+      transition: transform .08s, box-shadow .08s;
+    }
+    .pad[data-key="w"] { grid-area: w; }
+    .pad[data-key="a"], .pad[data-key="d"] {
+      background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.35), transparent 45%),
+                  linear-gradient(165deg, #64B5F6, var(--web-blue-deep));
+      box-shadow: 0 4px 0 #0D3A6E, inset 0 -4px 0 rgba(0,0,0,.18);
+    }
+    .pad.active, .pad:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #6D1412;
+    }
+
+    /* Virtual stick */
+    .stick-wrap { text-align: center; }
+    .stick-pad {
+      width: 112px; height: 112px;
+      margin: 0 auto;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,.2), transparent 55%),
+        linear-gradient(180deg, #0D47A1, #083056);
+      border: 3px solid #fff;
+      box-shadow: inset 0 0 16px rgba(0,0,0,.35), 0 4px 0 #062038;
+      position: relative;
+      touch-action: none;
+    }
+    .stick-knob {
+      position: absolute;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle at 35% 30%, #FF8A80, var(--spidey-red) 55%, var(--spidey-red-deep));
+      border: 2.5px solid #fff;
+      box-shadow: 0 3px 8px rgba(0,0,0,.35);
+      pointer-events: none;
+      transition: transform .05s linear;
+    }
+    .stick-label {
+      margin: 6px 0 0;
+      font-size: .58rem;
+      font-weight: 800;
+      color: rgba(255,255,255,.9);
+    }
+
+    .gestures-btn {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      border: 2.5px solid #fff;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #FFE082, var(--spin-yellow) 45%, #F9A825);
+      color: var(--ink);
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .82rem;
+      padding: 8px 12px;
+      cursor: pointer;
+      text-transform: uppercase;
+      box-shadow: 0 3px 0 #C27800;
+    }
+    .gestures-btn[aria-pressed="true"] {
+      background: linear-gradient(180deg, #64B5F6, var(--web-blue-deep));
+      color: #fff;
+      box-shadow: 0 3px 0 #0D3A6E;
+    }
+
+    .panel {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 2px solid rgba(255,255,255,.85);
+      background: rgba(255,255,255,.18);
+    }
+    .panel.talk-to { background: rgba(123,94,167,.22); }
+    .panel.talk-through { background: rgba(30,136,229,.22); }
+    .panel label {
+      display: block;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .78rem;
+      color: #fff;
+      text-transform: uppercase;
+      text-shadow: 0 1px 0 rgba(0,0,0,.2);
+    }
+    .panel .sub {
+      display: block;
+      font-size: .58rem;
+      font-weight: 700;
+      color: rgba(255,255,255,.85);
+      margin: 2px 0 6px;
+    }
+    .row {
+      display: flex;
+      gap: 6px;
+    }
+    .row input {
+      flex: 1;
+      min-width: 0;
+      border: 2px solid #fff;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-weight: 700;
+      font-size: .78rem;
+      color: var(--ink);
+      background: rgba(255,255,255,.95);
+    }
+    .row button, .esp-row button {
+      border: 2px solid #fff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .78rem;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(180deg, #64B5F6, var(--web-blue-deep));
+      box-shadow: 0 3px 0 #0D3A6E;
+      white-space: nowrap;
+    }
+    .row button:active, .esp-row button:active { transform: translateY(2px); box-shadow: 0 1px 0 #0D3A6E; }
+    .note {
+      margin: 5px 0 0;
+      font-size: .58rem;
+      font-weight: 700;
+      color: rgba(255,255,255,.88);
+    }
+
+    .esp-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .esp-row input {
+      flex: 1 1 100%;
+      border: 2px solid #fff;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-weight: 700;
+      font-size: .72rem;
+      background: rgba(255,255,255,.95);
+    }
+    .esp-row button.flip {
+      background: linear-gradient(180deg, #FF8A80, var(--spidey-red-deep));
+      box-shadow: 0 3px 0 #6D1412;
+    }
+    .esp-row button.flip[aria-pressed="false"] {
+      background: linear-gradient(180deg, #90A4AE, #546E7A);
+      box-shadow: 0 3px 0 #37474F;
+    }
+
+    .status-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 4px 2px 10px;
+    }
+    .pill {
+      font-size: .58rem;
+      font-weight: 800;
+      background: rgba(255,255,255,.78);
+      border: 1.5px solid rgba(255,255,255,.95);
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .led {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #43A047;
+      box-shadow: 0 0 6px #66BB6A;
+    }
+    .led.warn { background: #FFA000; box-shadow: 0 0 6px #FFB74D; }
+    .led.off { background: #90A4AE; box-shadow: none; }
+
+    /* Nav gesture bar */
+    .nav-bar {
+      flex: 0 0 auto;
+      display: flex;
+      justify-content: center;
+      padding: 6px 0 10px;
+    }
+    .nav-bar span {
+      width: 108px; height: 4px;
+      border-radius: 4px;
+      background: rgba(0,0,0,.35);
+    }
+
+    /* Gestures overlay */
+    .gestures-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      background: rgba(10,30,50,.55);
+      padding: 56px 14px 24px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .gestures-overlay.open { display: flex; }
+    .gestures-panel {
+      width: 100%;
+      max-height: 85%;
+      overflow-y: auto;
+      background: linear-gradient(180deg, #FFF8E1, #FFE082);
+      border: 3px solid #fff;
+      border-radius: 18px;
+      padding: 12px;
+      box-shadow: 0 12px 28px rgba(0,0,0,.3);
+    }
+    .gestures-panel h3 {
+      margin: 0 0 4px;
+      font-family: var(--display);
+      font-size: 1rem;
+      text-transform: uppercase;
+    }
+    .gestures-panel .sub { margin: 0 0 10px; font-size: .68rem; font-weight: 700; opacity: .75; }
+    .gesture-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .gkey {
+      border: 2px solid var(--ink);
+      border-radius: 12px;
+      background: #fff;
+      padding: 8px 4px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .gkey .k { font-family: var(--display); font-weight: 900; font-size: .95rem; }
+    .gkey .desc { font-size: .55rem; font-weight: 800; text-transform: uppercase; opacity: .7; }
+    .gkey:active { background: #BBDEFB; }
+    .close-g {
+      margin-top: 10px;
+      width: 100%;
+      border: 2px solid #fff;
+      border-radius: 12px;
+      padding: 10px;
+      font-family: var(--display);
+      font-weight: 900;
+      background: var(--spidey-red);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 48px;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(26,36,48,.92);
+      color: #fff;
+      font-weight: 800;
+      font-size: .72rem;
+      padding: 8px 14px;
+      border-radius: 999px;
+      opacity: 0;
+      pointer-events: none;
+      transition: .25s;
+      z-index: 40;
+      white-space: nowrap;
+      max-width: 90%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 420px) {
+      body { padding: 8px; align-items: stretch; }
+      .stage-label { font-size: .65rem; top: 6px; }
+      .phone {
+        width: 100%;
+        height: calc(100vh - 16px);
+        max-height: none;
+        border-radius: 28px;
+        padding: 8px;
+      }
+      .screen { border-radius: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-label">Android mock · Trace-E WEB-Quarters · not published</div>
+
+  <div class="phone" role="img" aria-label="Android phone mockup of Trace-E control app">
+    <span class="side-btn pwr" aria-hidden="true"></span>
+    <span class="side-btn vol-up" aria-hidden="true"></span>
+    <span class="side-btn vol-dn" aria-hidden="true"></span>
+
+    <div class="screen">
+      <div class="status-bar">
+        <span id="clock">15:10</span>
+        <div class="icons">
+          <span>LTE</span>
+          <span class="dot" title="Battery"></span>
+        </div>
+      </div>
+
+      <header class="app-bar">
+        <img class="avatar" src="assets/spidey.jpg" alt="Spidey" />
+        <div>
+          <h1>Trace-E HQ</h1>
+          <span class="sub">Spidey Friends · Control</span>
+        </div>
+      </header>
+
+      <div class="team-row" aria-label="Team">
+        <div class="mini-chip spidey"><img src="assets/spidey.jpg" alt="" /> Spidey</div>
+        <div class="mini-chip ghost"><img src="assets/ghost_spider.jpg" alt="" /> Ghost</div>
+        <div class="mini-chip spin"><img src="assets/spin.jpg" alt="" /> Spin</div>
+      </div>
+
+      <div class="scroll">
+        <div class="cam-block">
+          <div class="spk-mini" aria-hidden="true">
+            <span class="drv"></span><span class="drv lg"></span><span class="drv lg"></span><span class="drv"></span>
+          </div>
+          <div class="cam-frame">
+            <div class="bezel-dot" aria-hidden="true"></div>
+            <div class="cam-viewport" id="camBox">
+              <span class="live-pill">● LIVE CAM</span>
+              <div class="crest" aria-hidden="true">
+                <svg viewBox="0 0 200 200">
+                  <path d="M100 18 L168 58 L100 100 Z" fill="#7B5EA7"/>
+                  <path d="M32 58 L100 100 L100 182 L32 142 Z" fill="#E53935"/>
+                  <path d="M168 58 L100 100 L100 182 L168 142 Z" fill="#1A1A1A"/>
+                  <path d="M100 18 L168 58 L168 142 L100 182 L32 142 L32 58 Z"
+                        fill="none" stroke="#fff" stroke-width="6"/>
+                </svg>
+              </div>
+              <img id="mockCam" alt="" />
+              <div class="cam-ph">WEB-STER LIVE VIEW<br />
+                <span style="font-size:.8em;opacity:.9">Connect ESP for cam</span>
+              </div>
+            </div>
+          </div>
+          <div class="spk-mini" aria-hidden="true">
+            <span class="drv"></span><span class="drv lg"></span><span class="drv lg"></span><span class="drv"></span>
+          </div>
+        </div>
+
+        <div class="console">
+          <div class="holo-row">
+            <div class="holo">
+              <div class="name">Left · LM</div>
+              <div class="val" id="lm">0</div>
+            </div>
+            <div class="holo">
+              <div class="name">Right · RM</div>
+              <div class="val" id="rm">0</div>
+            </div>
+          </div>
+
+          <div class="drive-zone">
+            <div class="pads-wrap">
+              <p class="label">Web Drive · WASD</p>
+              <div class="pads" id="pads">
+                <button type="button" class="pad" data-key="w" aria-label="Forward">W</button>
+                <button type="button" class="pad" data-key="a" aria-label="Left">A</button>
+                <button type="button" class="pad" data-key="s" aria-label="Back">S</button>
+                <button type="button" class="pad" data-key="d" aria-label="Right">D</button>
+              </div>
+            </div>
+            <div class="stick-wrap">
+              <p class="label" style="margin:0 0 6px;font-family:var(--display);font-weight:900;font-size:.72rem;color:#fff;text-transform:uppercase;text-shadow:0 1px 0 rgba(0,0,0,.25)">Stick</p>
+              <div class="stick-pad" id="stickPad" aria-label="Virtual stick">
+                <div class="stick-knob" id="stickKnob"></div>
+              </div>
+              <p class="stick-label">Drag to drive</p>
+            </div>
+          </div>
+
+          <button type="button" class="gestures-btn" id="gesturesBtn" aria-pressed="false">Gestures</button>
+
+          <div class="panel talk-to">
+            <label for="talkToText">Talk to Trace</label>
+            <span class="sub">Send a message · Trace hears you</span>
+            <div class="row">
+              <input id="talkToText" type="text" maxlength="160" placeholder="Hey Trace-E!" />
+              <button type="button" id="talkToBtn">Send</button>
+            </div>
+            <p class="note" id="talkToNote">Waiting for a message…</p>
+          </div>
+
+          <div class="panel talk-through">
+            <label for="ttsText">Talk through Trace</label>
+            <span class="sub">Says it on the ESP amp</span>
+            <div class="row">
+              <input id="ttsText" type="text" maxlength="120" value="Webs up, WEB-Quarters!" />
+              <button type="button" id="speakBtn">Say!</button>
+            </div>
+            <p class="note" id="speakNote">speak_server :8787 → ESP</p>
+          </div>
+
+          <div class="esp-row" title="ESP base URL">
+            <input id="espIpInput" type="text" spellcheck="false" value="http://192.168.1.104" />
+            <button type="button" id="espSaveBtn">Set ESP</button>
+            <button type="button" class="flip" id="camFlipBtn" aria-pressed="true">Flip cam: ON</button>
+          </div>
+        </div>
+
+        <div class="status-pills">
+          <span class="pill"><span class="led"></span> HQ online</span>
+          <span class="pill" id="motorPill"><span class="led off" id="motorLed"></span> Motors: idle</span>
+          <span class="pill" id="camPill"><span class="led warn"></span> Cam: mock</span>
+          <span class="pill" id="espPill">ESP: 192.168.1.104</span>
+        </div>
+      </div>
+
+      <div class="nav-bar" aria-hidden="true"><span></span></div>
+
+      <div class="gestures-overlay" id="gesturesOverlay" aria-hidden="true">
+        <div class="gestures-panel" role="dialog" aria-label="Gestures">
+          <h3>Gestures · Shortcuts</h3>
+          <p class="sub">Tap a move · WASD / stick stay for drive</p>
+          <div class="gesture-grid">
+            <button type="button" class="gkey" data-g="wave"><span class="k">1</span><span class="desc">Wave</span></button>
+            <button type="button" class="gkey" data-g="nod"><span class="k">2</span><span class="desc">Nod</span></button>
+            <button type="button" class="gkey" data-g="dance"><span class="k">3</span><span class="desc">Dance</span></button>
+            <button type="button" class="gkey" data-g="spin"><span class="k">4</span><span class="desc">Spin</span></button>
+            <button type="button" class="gkey" data-g="webs"><span class="k">5</span><span class="desc">Webs</span></button>
+            <button type="button" class="gkey" data-g="stop"><span class="k">X</span><span class="desc">Stop</span></button>
+            <button type="button" class="gkey" data-g="face"><span class="k">F</span><span class="desc">Face</span></button>
+            <button type="button" class="gkey" data-g="reset"><span class="k">R</span><span class="desc">Reset</span></button>
+          </div>
+          <button type="button" class="close-g" id="closeGestures">Close</button>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+
+  <script>
+    const keys = new Set();
+    const pads = [...document.querySelectorAll('.pad')];
+    const lm = document.getElementById('lm');
+    const rm = document.getElementById('rm');
+    const motorLed = document.getElementById('motorLed');
+    const motorPill = document.getElementById('motorPill');
+    const toast = document.getElementById('toast');
+    const camBox = document.getElementById('camBox');
+    const mockCam = document.getElementById('mockCam');
+    let camFlip = 'v';
+    let espBase = 'http://192.168.1.104';
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove('show'), 1600);
+    }
+
+    function syncMotors() {
+      let L = 0, R = 0;
+      if (keys.has('w')) { L = 70; R = 70; }
+      if (keys.has('s')) { L = -70; R = -70; }
+      if (keys.has('a')) { L -= 45; R += 45; }
+      if (keys.has('d')) { L += 45; R -= 45; }
+      if (stick.mag > 0.12) {
+        const fwd = -stick.y * 80;
+        const turn = stick.x * 55;
+        L = Math.round(fwd + turn);
+        R = Math.round(fwd - turn);
+      }
+      L = Math.max(-100, Math.min(100, L));
+      R = Math.max(-100, Math.min(100, R));
+      lm.textContent = L;
+      rm.textContent = R;
+      const moving = L !== 0 || R !== 0;
+      motorLed.className = 'led' + (moving ? '' : ' off');
+      motorPill.innerHTML = '<span class="led' + (moving ? '' : ' off') + '"></span> Motors: ' + (moving ? 'drive' : 'idle');
+    }
+
+    function down(k) { keys.add(k); pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key))); syncMotors(); }
+    function up(k) { keys.delete(k); pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key))); syncMotors(); }
+
+    pads.forEach(p => {
+      const k = p.dataset.key;
+      p.addEventListener('pointerdown', e => { e.preventDefault(); p.setPointerCapture(e.pointerId); down(k); });
+      p.addEventListener('pointerup', () => up(k));
+      p.addEventListener('pointercancel', () => up(k));
+    });
+
+    window.addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
+      if ('wasd'.includes(k)) { e.preventDefault(); down(k); }
+    });
+    window.addEventListener('keyup', e => {
+      const k = e.key.toLowerCase();
+      if ('wasd'.includes(k)) { e.preventDefault(); up(k); }
+    });
+
+    // Virtual stick
+    const stickPad = document.getElementById('stickPad');
+    const stickKnob = document.getElementById('stickKnob');
+    const stick = { x: 0, y: 0, mag: 0, active: false };
+    const maxR = 34;
+
+    function setStick(clientX, clientY) {
+      const r = stickPad.getBoundingClientRect();
+      let dx = clientX - (r.left + r.width / 2);
+      let dy = clientY - (r.top + r.height / 2);
+      const mag = Math.hypot(dx, dy);
+      if (mag > maxR) { dx = dx / mag * maxR; dy = dy / mag * maxR; }
+      stick.x = dx / maxR;
+      stick.y = dy / maxR;
+      stick.mag = Math.min(1, mag / maxR);
+      stickKnob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+      syncMotors();
+    }
+    function resetStick() {
+      stick.x = stick.y = stick.mag = 0;
+      stickKnob.style.transform = 'translate(-50%, -50%)';
+      syncMotors();
+    }
+    stickPad.addEventListener('pointerdown', e => {
+      stick.active = true;
+      stickPad.setPointerCapture(e.pointerId);
+      setStick(e.clientX, e.clientY);
+    });
+    stickPad.addEventListener('pointermove', e => { if (stick.active) setStick(e.clientX, e.clientY); });
+    stickPad.addEventListener('pointerup', () => { stick.active = false; resetStick(); });
+    stickPad.addEventListener('pointercancel', () => { stick.active = false; resetStick(); });
+
+    // Gestures
+    const gesturesBtn = document.getElementById('gesturesBtn');
+    const gesturesOverlay = document.getElementById('gesturesOverlay');
+    function setGestures(on) {
+      gesturesBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      gesturesBtn.textContent = on ? 'Gestures · ON' : 'Gestures';
+      gesturesOverlay.classList.toggle('open', on);
+      gesturesOverlay.setAttribute('aria-hidden', on ? 'false' : 'true');
+    }
+    gesturesBtn.addEventListener('click', () => setGestures(gesturesBtn.getAttribute('aria-pressed') !== 'true'));
+    document.getElementById('closeGestures').addEventListener('click', () => setGestures(false));
+    document.querySelectorAll('.gkey').forEach(btn => {
+      btn.addEventListener('click', () => {
+        showToast('Gesture: ' + btn.dataset.g);
+        setGestures(false);
+      });
+    });
+
+    // Talk panels (mock)
+    document.getElementById('talkToBtn').addEventListener('click', () => {
+      const msg = (document.getElementById('talkToText').value || '').trim();
+      const note = document.getElementById('talkToNote');
+      if (!msg) { note.textContent = 'Type a message for Trace first.'; return; }
+      note.textContent = 'Mock: Trace heard “' + msg.slice(0, 40) + '”';
+      showToast('Talk to Trace (mock)');
+    });
+    document.getElementById('speakBtn').addEventListener('click', () => {
+      const msg = (document.getElementById('ttsText').value || '').trim();
+      const note = document.getElementById('speakNote');
+      if (!msg) { note.textContent = 'Type words for Trace to say.'; return; }
+      note.textContent = 'Mock say → ESP amp: “' + msg.slice(0, 36) + '”';
+      showToast('Talk through Trace (mock)');
+    });
+
+    // ESP + flip
+    const camFlipBtn = document.getElementById('camFlipBtn');
+    const modes = ['off', 'v', '180'];
+    function applyFlip() {
+      camBox.classList.remove('flip-v', 'flip-180');
+      if (camFlip === 'v') camBox.classList.add('flip-v');
+      if (camFlip === '180') camBox.classList.add('flip-180');
+      const label = camFlip === 'off' ? 'OFF' : (camFlip === '180' ? '180°' : 'ON');
+      camFlipBtn.textContent = 'Flip cam: ' + label;
+      camFlipBtn.setAttribute('aria-pressed', camFlip === 'off' ? 'false' : 'true');
+    }
+    camFlipBtn.addEventListener('click', () => {
+      camFlip = modes[(modes.indexOf(camFlip) + 1) % modes.length];
+      applyFlip();
+      showToast('Cam flip: ' + camFlip);
+    });
+    applyFlip();
+
+    document.getElementById('espSaveBtn').addEventListener('click', () => {
+      let v = (document.getElementById('espIpInput').value || '').trim();
+      if (v && !/^https?:\/\//i.test(v)) v = 'http://' + v;
+      espBase = v.replace(/\/$/, '') || 'http://192.168.1.104';
+      document.getElementById('espIpInput').value = espBase;
+      document.getElementById('espPill').textContent = 'ESP: ' + espBase.replace(/^https?:\/\//, '');
+      tryLoadCam();
+      showToast('ESP set');
+    });
+
+    function tryLoadCam() {
+      const camPill = document.getElementById('camPill');
+      // Prefer brain proxy path later; direct stream for mock probe
+      const url = espBase + ':82/stream';
+      mockCam.onload = () => {
+        camBox.classList.add('live');
+        camPill.innerHTML = '<span class="led"></span> Cam: live';
+      };
+      mockCam.onerror = () => {
+        camBox.classList.remove('live');
+        camPill.innerHTML = '<span class="led warn"></span> Cam: offline (mock OK)';
+      };
+      // Don't hammer ESP in mock — only attempt once; UI stays useful offline
+      mockCam.src = '';
+      camPill.innerHTML = '<span class="led warn"></span> Cam: mock · ESP ' + espBase.replace(/^https?:\/\//, '');
+    }
+
+    // Clock
+    function tickClock() {
+      const d = new Date();
+      document.getElementById('clock').textContent =
+        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+    tickClock();
+    setInterval(tickClock, 30000);
+    syncMotors();
+  </script>
+</body>
+</html>
