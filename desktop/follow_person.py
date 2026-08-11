@@ -1325,7 +1325,7 @@ class PersonFollower:
             2,
         )
 
-        ok, buf = cv2.imencode(".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 72])
+        ok, buf = cv2.imencode(".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
         return bytes(buf) if ok else b""
 
     def _run(self) -> None:
