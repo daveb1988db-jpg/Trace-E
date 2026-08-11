@@ -1195,7 +1195,7 @@
 
     const params = new URLSearchParams(location.search);
     const BRAIN = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '')
-      || ((location.port === '8787') ? '' : 'http://127.0.0.1:8787');
+      || ((location.port === '8788') ? '' : 'http://192.168.1.105:8788');
     const ESP_DEFAULT = params.get('esp') || 'http://192.168.1.102';
     let espBase = ESP_DEFAULT.replace(/\/$/, '');
     let lastLR = [0, 0];
