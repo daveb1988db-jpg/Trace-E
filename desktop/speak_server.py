@@ -129,7 +129,7 @@ ALLOW_LAPTOP = (os.environ.get("TRACE_E_ALLOW_LAPTOP") or "0").strip().lower() i
 )
 DEFAULT_ESP = (
     os.environ.get("TRACE_E_ESP_BASE")
-    or "http://192.168.1.104"
+    or "http://192.168.1.102"
 ).rstrip("/")
 # Peanut's ESP_BASE_URL may point at a different robot — only used as discover hint
 _PEANUT_ESP_HINT = (
