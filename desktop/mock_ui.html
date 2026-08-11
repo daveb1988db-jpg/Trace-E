@@ -1378,11 +1378,10 @@
     function driveUrlProxy() { return BRAIN + '/api/esp/drive'; }
     // Single full-panel feed via brain cam hub only — never open ESP :82 from the browser
     function streamUrl() {
-      let u = BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
-      if (followOn) u += '&annotate=1&nav=1';
-      return u;
+      if (followOn) return BRAIN + '/api/follow/frame?esp=' + encodeURIComponent(espBase);
+      return BRAIN + '/api/cam/latest?esp=' + encodeURIComponent(espBase);
     }
-    let useDirectDrive = true;
+    let useDirectDrive = false;
     function statusUrls() {
       // One known ESP first — avoid scanning every candidate every poll (was a lag hammer).
       const urls = [];
@@ -1722,6 +1721,7 @@
       const src = base + (base.includes('?') ? '&' : '?') + 't=' + Date.now();
       clearTimeout(attachCam._fallbackT);
       clearInterval(attachCam._livePoll);
+      clearInterval(attachCam._framePoll);
       espCam.onload = () => markCamLive();
       espCam.onerror = () => {
         camBox.classList.remove('live');
@@ -1730,6 +1730,9 @@
         camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: no stream';
       };
       espCam.src = src;
+      attachCam._framePoll = setInterval(() => {
+        espCam.src = streamUrl() + (streamUrl().includes('?') ? '&' : '?') + 't=' + Date.now();
+      }, 200);
       // MJPEG often skips onload — poll naturalWidth so .live (opacity) flips on
       let tries = 0;
       attachCam._livePoll = setInterval(() => {
