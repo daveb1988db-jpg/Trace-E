@@ -194,7 +194,6 @@ class CamHub:
                     stream_failures += 1
                     with self._lock:
                         self._error = f"stream attempt {stream_failures}: {exc}"
-                        self._running = False
                     time.sleep(0.4)
                 finally:
                     if fp is not None:
@@ -230,6 +229,7 @@ class CamHub:
                                 self._cond.notify_all()
                             last_jpg = jpg
                             last_change = time.perf_counter()
+                            stream_failures = 0
                         fps_n += 1
                         now = time.perf_counter()
                         if now - fps_t0 >= 1.0:
@@ -244,7 +244,6 @@ class CamHub:
                 except Exception as exc:
                     with self._lock:
                         self._error = str(exc)
-                        self._running = False
                     time.sleep(0.5)
 
 
