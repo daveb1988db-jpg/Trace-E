@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Trace-E nav follower — motion = human (floor cam ~13–25 cm).
+Trace-E nav follower  -  motion = human (floor cam ~13–25 cm).
 
 - Primary acquire: frame-diff / absdiff -> blobs -> H1, H2 (left->right)
-- Sticky lock: IoU / centroid — stay on chosen Hn when others cross
+- Sticky lock: IoU / centroid  -  stay on chosen Hn when others cross
 - YOLO person: optional bonus confirm only (never required)
 - No lock -> active SEEK (slow pivot/scan); US close -> back/turn away
 - Lock -> follow closely (US-first range + differential drive)
@@ -30,7 +30,7 @@ try:
 except Exception:  # pragma: no cover
     YOLO_TRACKER = None  # type: ignore
 
-# Drive: stay behind — never charge through legs
+# Drive: stay behind  -  never charge through legs
 FORWARD_FAST = 70
 FORWARD_MED = 48
 FORWARD_SLOW = 22
@@ -38,22 +38,22 @@ TURN_MAX = 32
 TURN_GAIN = 85.0
 CENTER_OK = 0.12
 CENTER_SOFT = 0.28
-# Floor-cam: legs fill most of the frame even at 50–80cm — area alone must NOT freeze nav.
+# Floor-cam: legs fill most of the frame even at 50–80cm  -  area alone must NOT freeze nav.
 AREA_TOO_CLOSE = 0.92
 AREA_FOLLOW_OK = 0.78
 AREA_FAR = 0.20
-# Grace while locked but briefly dark — then SEEK, never freeze forever
+# Grace while locked but briefly dark  -  then SEEK, never freeze forever
 LOST_STOP_S = 2.2
 LOCK_CLEAR_S = 3.5
 DETECT_EVERY = 1
 DRIVE_HZ = 10.0
-# SR-04 hard bumper (cm) — stop BEFORE furniture/walls (was 28 -> headbutts)
+# SR-04 hard bumper (cm)  -  stop BEFORE furniture/walls (was 28 -> headbutts)
 US_STOP_CM = 40.0
 US_HOLD_CM = 55.0
 US_SEEK_AVOID_CM = 50.0
 US_SLOW_CM = 110.0
 US_CATCH_CM = 170.0
-# HC-SR04 glitch floor only — NEVER wipe real close hits (<8 used to null US)
+# HC-SR04 glitch floor only  -  NEVER wipe real close hits (<8 used to null US)
 US_NOISE_CM = 1.5
 US_MAX_CM = 400.0
 MIC_STOP_LEVEL = 0.85
@@ -65,7 +65,7 @@ US_REVERSE_PWM = 48
 BOX_SMOOTH = 0.55
 IOU_REACQUIRE = 0.08
 IOU_CROSS_IGNORE = 0.04
-# Floor cam: need a real moving leg/body — not carpet flicker / Trace herself.
+# Floor cam: need a real moving leg/body  -  not carpet flicker / Trace herself.
 MOTION_ACQUIRE_MIN = 7.5
 MOTION_MIN_AREA = 0.018          # real limb / torso patch
 MOTION_MAX_AREA = 0.32           # reject room-wide ego flood
@@ -84,7 +84,7 @@ MOTION_HIT_FRAMES = 3            # need N detect hits before lock (anti-fake H1)
 MOTION_MISS_DROP = 4             # drop lock after N low-motion miss frames
 MOTION_LOCK_MIN = 5.0            # locked ROI must still move this much
 MOTION_CY_MIN = 0.28             # floor cam: prefer lower frame (legs)
-# Active seek — in-place pivot only; US close -> reverse + turn (never creep into wall)
+# Active seek  -  in-place pivot only; US close -> reverse + turn (never creep into wall)
 SEEK_TURN = 26
 SEEK_FLIP_S = 3.8
 SEEK_BACK_PWM = 44
@@ -119,7 +119,7 @@ class FollowConfig:
     us_catch_cm: float = US_CATCH_CM
     us_noise_cm: float = US_NOISE_CM
     us_max_cm: float = US_MAX_CM
-    use_pc_mic: bool = False  # unused — Trace has onboard MAX4466
+    use_pc_mic: bool = False  # unused  -  Trace has onboard MAX4466
     use_esp_mic: bool = True  # fuse ESP mic_level into nav
     mic_stop_level: float = MIC_STOP_LEVEL
     mic_presence_level: float = 0.42  # nearby voice/noise while seeking
@@ -296,7 +296,7 @@ def seek_scan_drive(
 ) -> Tuple[int, int, str, bool]:
     """
     Active search when unlocked. Returns (L, R, mode, flip_dir).
-    Never drives forward into obstacles — pivot / reverse / turn only.
+    Never drives forward into obstacles  -  pivot / reverse / turn only.
     flip_dir True -> caller should reverse scan direction after obstacle.
     """
     d = 1 if seek_dir >= 0 else -1
@@ -312,7 +312,7 @@ def seek_scan_drive(
         return -SEEK_BACK_PWM, -SEEK_BACK_PWM, "seek-avoid", True
 
     if have_us and us_cm <= avoid_cm:
-        # Too close to roam forward — reverse slightly then in-place turn
+        # Too close to roam forward  -  reverse slightly then in-place turn
         # Prefer reverse first when under hold, else hard pivot away
         if us_cm <= cfg.us_hold_cm:
             turn = SEEK_AVOID_TURN * d
@@ -327,7 +327,7 @@ def seek_scan_drive(
         turn = SEEK_AVOID_TURN * d
         return clamp_motor(turn), clamp_motor(-turn), "seek-avoid-turn", False
 
-    # Gentle in-place pivot / scan — NO forward component
+    # Gentle in-place pivot / scan  -  NO forward component
     turn = int(cfg.seek_turn) * d
     return clamp_motor(turn), clamp_motor(-turn), "seek-scan", False
 
@@ -521,7 +521,7 @@ class PersonFollower:
         self._seek_look_until = 0.0
         self._seek_look_next = 0.0
         self._ego_until = 0.0  # brief ego suppress after pivot; off while stopped
-        self._listen_hold = False  # cover-sensor talk — freeze motors
+        self._listen_hold = False  # cover-sensor talk  -  freeze motors
         self._acquire_hits = 0
         self._acquire_box: Optional[Tuple[int, int, int, int]] = None
         self._lock_miss = 0
@@ -533,7 +533,7 @@ class PersonFollower:
             self._listen_hold = bool(on)
             if self._listen_hold:
                 self._status.mode = "listen-hold"
-                self._status.message = "Listening — motors held"
+                self._status.message = "Listening  -  motors held"
                 self._status.updated = time.time()
         if on:
             self._send_drive(self._cfg.esp_base, 0, 0, force=True)
@@ -698,7 +698,7 @@ class PersonFollower:
             self._mog2 = None
             self._detector = "motion"
             self._last_humans = []
-            # Warm YOLO in background if present — bonus only
+            # Warm YOLO in background if present  -  bonus only
             if YOLO_TRACKER is not None:
                 try:
                     YOLO_TRACKER.ensure()
@@ -709,7 +709,7 @@ class PersonFollower:
                 mode="seek-scan",
                 esp=cfg.esp_base,
                 target_human=self._target_human,
-                message=f"Nav ON — SEEK for motion -> H{self._target_human}",
+                message=f"Nav ON  -  SEEK for motion -> H{self._target_human}",
                 updated=time.time(),
             )
             CAM_HUB.ensure(cfg.esp_base)
@@ -827,7 +827,7 @@ class PersonFollower:
         return self._mog2
 
     def _is_ego_turning(self) -> bool:
-        """True while actively yawing — NOT while motors are stopped (seek-look)."""
+        """True while actively yawing  -  NOT while motors are stopped (seek-look)."""
         L, R = self._last_drive
         if L == 0 and R == 0:
             return False
@@ -905,7 +905,7 @@ class PersonFollower:
             thr_dyn = max(thresh, int(global_e * 2.2 + 8))
             thresh = thr_dyn
         _, mask = cv2.threshold(blur, thresh, 255, cv2.THRESH_BINARY)
-        # No MOG2 — it was OR'd before and fake-painted furniture as H1 forever.
+        # No MOG2  -  it was OR'd before and fake-painted furniture as H1 forever.
         k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_open)
@@ -938,10 +938,10 @@ class PersonFollower:
             if aspect > MOTION_MAX_ASPECT:
                 continue
             cy = (y + bh * 0.5) / float(max(1, h))
-            # Floor cam (~13–25 cm): movers are legs — reject ceiling / upper junk
+            # Floor cam (~13–25 cm): movers are legs  -  reject ceiling / upper junk
             if cy < MOTION_CY_MIN and box_frac < 0.12:
                 continue
-            # Light pad only — avoid swallowing the room
+            # Light pad only  -  avoid swallowing the room
             pad = int(0.03 * max(bw, bh))
             x = max(0, x - pad)
             y = max(0, y - pad)
@@ -994,7 +994,7 @@ class PersonFollower:
     def _yolo_bonus(
         self, frame: np.ndarray
     ) -> List[Tuple[Tuple[int, int, int, int], float]]:
-        """Optional YOLO person boxes — never required for lock/follow."""
+        """Optional YOLO person boxes  -  never required for lock/follow."""
         if YOLO_TRACKER is None:
             return []
         try:
@@ -1030,7 +1030,7 @@ class PersonFollower:
         """
         Motion blobs are humans (max 2). YOLO may refine a box only.
         H1 = strongest coherent mover; H2 only if clearly separate.
-        Once locked, prefer sticky track — don't spawn a forest.
+        Once locked, prefer sticky track  -  don't spawn a forest.
         """
         refined: List[Tuple[Tuple[int, int, int, int], float, bool]] = []
         for box, mot in motion_scored:
@@ -1151,7 +1151,7 @@ class PersonFollower:
     def _resolve_locked(
         self, humans: List[Dict[str, Any]], cfg: FollowConfig
     ) -> Optional[Dict[str, Any]]:
-        """Sticky: stay on locked blob via track_id / IoU — need real overlap."""
+        """Sticky: stay on locked blob via track_id / IoU  -  need real overlap."""
         if not humans:
             return None
         if self._locked_id is not None:
@@ -1187,7 +1187,7 @@ class PersonFollower:
         target_id: int,
         cfg: FollowConfig,
     ) -> Optional[Dict[str, Any]]:
-        """Need sustained motion hits before locking — no instant fake H1."""
+        """Need sustained motion hits before locking  -  no instant fake H1."""
         if not humans:
             self._acquire_hits = 0
             self._acquire_box = None
@@ -1306,7 +1306,7 @@ class PersonFollower:
         hud = f"{mode.upper()}  {lock}  {source}  L{left} R{right}"
         cv2.putText(vis, hud, (10, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2)
 
-        us_txt = f"US {us_cm:.0f}cm" if us_cm is not None else "US —"
+        us_txt = f"US {us_cm:.0f}cm" if us_cm is not None else "US  - "
         if us_cm is not None and us_cm <= cfg.us_stop_cm:
             us_txt = f"US STOP {us_cm:.0f}cm"
         elif us_cm is not None and us_cm <= cfg.us_hold_cm:
@@ -1340,7 +1340,7 @@ class PersonFollower:
         period = 1.0 / max(4.0, cfg.drive_hz)
         seq = -1
         self._set_status(
-            message=f"SEEK — scan for motion -> follow H{self._target_human}",
+            message=f"SEEK  -  scan for motion -> follow H{self._target_human}",
             mode="seek-scan",
             target_human=self._target_human,
         )
@@ -1351,7 +1351,7 @@ class PersonFollower:
             jpg, seq = CAM_HUB.wait_jpeg(timeout=0.8, after_seq=seq)
             if jpg is None:
                 self._send_drive(cfg.esp_base, 0, 0)
-                self._set_status(mode="no-cam", message="No cam — motors stopped", person=False)
+                self._set_status(mode="no-cam", message="No cam  -  motors stopped", person=False)
                 continue
 
             frame = CAM_HUB.latest_bgr()
@@ -1363,7 +1363,7 @@ class PersonFollower:
 
             frame_mean = float(np.mean(frame))
             if frame_mean < 18.0:
-                # Still seek-turn slowly? Safer stop — can't see
+                # Still seek-turn slowly? Safer stop  -  can't see
                 self._send_drive(cfg.esp_base, 0, 0)
                 annot = self._annotate(
                     frame, [], self._target_human, 0, 0, "cam-dark", False,
@@ -1373,7 +1373,7 @@ class PersonFollower:
                     self._publish_annot(annot)
                 self._set_status(
                     running=True, mode="cam-dark", left=0, right=0, person=False,
-                    boxes=0, humans=[], message="Cam too dark — uncover lens",
+                    boxes=0, humans=[], message="Cam too dark  -  uncover lens",
                     source="dark", obstacle="cam-dark",
                 )
                 time.sleep(0.15)
@@ -1387,7 +1387,7 @@ class PersonFollower:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             now_pre = time.time()
             looking = now_pre < self._seek_look_until
-            # Ego only while pivoting — NEVER during seek-look (motors 0) or we'd miss a kicking leg
+            # Ego only while pivoting  -  NEVER during seek-look (motors 0) or we'd miss a kicking leg
             if self._is_ego_turning():
                 self._ego_until = now_pre + 0.35
             ego = (not looking) and (
@@ -1402,7 +1402,7 @@ class PersonFollower:
                 if YOLO_TRACKER is not None and YOLO_TRACKER.ready:
                     yolo_boxes = self._yolo_bonus(frame)
                 humans = self._assign_humans(motion_scored, yolo_boxes, w, h)
-                # If motion missed but YOLO sees a person while we're still — take it
+                # If motion missed but YOLO sees a person while we're still  -  take it
                 if not humans and looking and yolo_boxes:
                     humans = self._assign_humans([], yolo_boxes, w, h)
                     for hh in humans:
@@ -1419,7 +1419,7 @@ class PersonFollower:
             else:
                 humans = list(getattr(self, "_last_humans", []) or [])
 
-            # Sticky lock vs fresh acquire — drop lock if motion dies (fake H1)
+            # Sticky lock vs fresh acquire  -  drop lock if motion dies (fake H1)
             chosen = None
             if self._locked_box is not None or self._locked_id is not None:
                 chosen = self._resolve_locked(humans, cfg)
@@ -1450,7 +1450,7 @@ class PersonFollower:
                 chosen["cy"] = (y + bh * 0.5) / float(max(1, h))
                 chosen["area"] = (bw * bh) / float(max(1, w * h))
                 self._locked_box = sb
-                # Keep real H1/H2 slot labels — don't rewrite everything to H1
+                # Keep real H1/H2 slot labels  -  don't rewrite everything to H1
                 cleaned: List[Dict[str, Any]] = []
                 for hman in humans:
                     hman = dict(hman)
@@ -1528,7 +1528,7 @@ class PersonFollower:
                         }
                     ]
             elif miss_age <= min(1.0, cfg.lost_stop_s) and self._locked_box is not None:
-                # Very short grace — show last box but do NOT drive on a ghost lock
+                # Very short grace  -  show last box but do NOT drive on a ghost lock
                 x, y, bw, bh = self._locked_box
                 cx = (x + bw * 0.5) / float(w)
                 area = (bw * bh) / float(max(1, w * h))
@@ -1538,7 +1538,7 @@ class PersonFollower:
                 obstacle = "grace"
                 source = last_source or "grace"
             else:
-                # ACTIVE SEEK — never freeze facing a wall; never forward into US
+                # ACTIVE SEEK  -  never freeze facing a wall; never forward into US
                 if miss_age > cfg.lock_clear_s:
                     self._locked_id = None
                     self._locked_box = None
@@ -1551,7 +1551,7 @@ class PersonFollower:
                 if now >= self._seek_flip_at:
                     self._seek_dir *= -1
                     self._seek_flip_at = now + cfg.seek_flip_s
-                # Pause pivot so absdiff sees the dancer — reset baseline or first frame is ego junk
+                # Pause pivot so absdiff sees the dancer  -  reset baseline or first frame is ego junk
                 if now >= self._seek_look_next and now >= self._seek_look_until:
                     self._seek_look_until = now + SEEK_LOOK_S
                     self._seek_look_next = now + SEEK_LOOK_S + SEEK_LOOK_GAP_S
@@ -1579,7 +1579,7 @@ class PersonFollower:
             self._prev_gray = gray
 
             if person and cfg.use_esp_mic and mic_level >= cfg.mic_stop_level:
-                # Loud burst near Trace while locked — soft stop (close talk / shout)
+                # Loud burst near Trace while locked  -  soft stop (close talk / shout)
                 if us_cm is None or us_cm <= cfg.us_hold_cm + 25:
                     left, right = 0, 0
                     mode = "mic-soft-stop"
@@ -1613,7 +1613,7 @@ class PersonFollower:
                 obstacle = obstacle or "anti-burnout"
 
             # === HC-SR04 HARD FENCE (wins over follow/seek/grace) ===
-            # Except listen-hold: covering US to talk is intentional — don't reverse-fight the hand
+            # Except listen-hold: covering US to talk is intentional  -  don't reverse-fight the hand
             us_force = False
             if self._listen_hold:
                 left, right = 0, 0
@@ -1632,7 +1632,7 @@ class PersonFollower:
                 obstacle = "us-stop"
                 us_force = True
             elif us_cm is not None and us_cm <= cfg.us_hold_cm:
-                # No forward past hold fence — allow in-place yaw only
+                # No forward past hold fence  -  allow in-place yaw only
                 if left > 0 or right > 0:
                     # kill forward component; keep differential turn if any
                     fwd = (left + right) * 0.5
