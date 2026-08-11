@@ -121,7 +121,7 @@ class CamHub:
     def _run(self) -> None:
         fps_t0 = time.perf_counter()
         fps_n = 0
-        stream_failures = 0
+        stream_failures = 999
         last_capture = 0.0
         last_jpg = None
         last_change = 0.0
@@ -238,7 +238,7 @@ class CamHub:
                             fps_t0 = now
                             fps_n = 0
                     now = time.perf_counter()
-                    sleep = max(0.8, 1.0 - (now - last_capture))
+                    sleep = max(0.15, 0.2 - (now - last_capture))
                     last_capture = now
                     time.sleep(sleep)
                 except Exception as exc:
