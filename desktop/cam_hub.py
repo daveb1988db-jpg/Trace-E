@@ -213,7 +213,7 @@ class CamHub:
                             "Connection": "close",
                         },
                     )
-                    with urllib.request.urlopen(req, timeout=5) as resp:
+                    with urllib.request.urlopen(req, timeout=2) as resp:
                         jpg = resp.read()
                     if 800 <= len(jpg) <= JPEG_MAX:
                         if jpg == last_jpg:
@@ -237,7 +237,7 @@ class CamHub:
                             fps_t0 = now
                             fps_n = 0
                     now = time.perf_counter()
-                    sleep = max(0.15, 0.2 - (now - last_capture))
+                    sleep = max(0.05, 0.1 - (now - last_capture))
                     last_capture = now
                     time.sleep(sleep)
                 except Exception as exc:
