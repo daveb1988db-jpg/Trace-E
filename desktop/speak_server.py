@@ -3,14 +3,14 @@
 Trace-E Web-Quarters local brain — serve mock_ui + Talk APIs.
 
 Endpoints:
-  GET  /                  → mock_ui.html
+  GET  /                  -> mock_ui.html
   GET  /api/health
-  POST /api/talk          → Talk TO Trace (chat/command stub)
-  POST /api/speak         → Talk THROUGH Trace (TTS → ESP amp, laptop fallback)
-  POST /api/follow/start  → Person follow (cam detect → differential drive)
+  POST /api/talk          -> Talk TO Trace (chat/command stub)
+  POST /api/speak         -> Talk THROUGH Trace (TTS -> ESP amp, laptop fallback)
+  POST /api/follow/start  -> Person follow (cam detect -> differential drive)
   POST /api/follow/stop
   GET  /api/follow/status
-  GET  /api/follow/frame  → Annotated JPEG overlay
+  GET  /api/follow/frame  -> Annotated JPEG overlay
 
 TTS (Peanut Ana PRIMARY for Ollie):
   1) edge-tts en-US-AnaNeural  (Peanut's working Ana voice)
@@ -52,7 +52,7 @@ SFX_DIR = DESKTOP_DIR / "assets" / "sfx"
 CACHE_DIR.mkdir(exist_ok=True)
 SFX_DIR.mkdir(parents=True, exist_ok=True)
 
-# Person follow (OpenCV HOG → differential drive). Optional ROS2 Docker wraps same module.
+# Person follow (OpenCV HOG -> differential drive). Optional ROS2 Docker wraps same module.
 try:
     from cam_hub import CAM_HUB
 except Exception:  # pragma: no cover
@@ -101,7 +101,7 @@ def _load_dotenv_files() -> List[str]:
 
 _DOTENV_LOADED = _load_dotenv_files()
 
-# Situation → candidate WAV filenames (replace files in assets/sfx/ with real Spidey clips)
+# Situation -> candidate WAV filenames (replace files in assets/sfx/ with real Spidey clips)
 SFX_MAP = {
     "connect": ["connect.wav", "chirp1.wav"],
     "success": ["success.wav", "chirp2.wav", "chirp3.wav"],
@@ -363,7 +363,7 @@ def ensure_wav_16k_mono(src: Path) -> Optional[Path]:
 
 
 def synth_edge_ana_wav(text: str) -> Path:
-    """Peanut Ana voice via edge-tts (en-US-AnaNeural) → 16 kHz mono WAV."""
+    """Peanut Ana voice via edge-tts (en-US-AnaNeural) -> 16 kHz mono WAV."""
     import asyncio
 
     import edge_tts
@@ -403,7 +403,7 @@ def synth_edge_ana_wav(text: str) -> Path:
 
 
 def synth_groq_tts_wav(text: str) -> Path:
-    """Groq Orpheus/PlayAI TTS → 16 kHz mono WAV (needs GROQ_API_KEY)."""
+    """Groq Orpheus/PlayAI TTS -> 16 kHz mono WAV (needs GROQ_API_KEY)."""
     if not GROQ_API_KEY:
         raise RuntimeError("GROQ_API_KEY missing")
     from groq import Groq
@@ -460,7 +460,7 @@ def synth_groq_tts_wav(text: str) -> Path:
 
 
 def synth_gemini_tts_wav(text: str) -> Path:
-    """Gemini native TTS → 16 kHz mono WAV (needs GEMINI_API_KEY / GOOGLE_API_KEY)."""
+    """Gemini native TTS -> 16 kHz mono WAV (needs GEMINI_API_KEY / GOOGLE_API_KEY)."""
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY / GOOGLE_API_KEY missing")
     from google import genai
@@ -526,7 +526,7 @@ def synth_gemini_tts_wav(text: str) -> Path:
 
 
 def try_101_spidey_tts(text: str) -> Optional[Path]:
-    """Best-effort 101Soundboards Spidey TTS → cached mp3. Returns None on CF/block/fail."""
+    """Best-effort 101Soundboards Spidey TTS -> cached mp3. Returns None on CF/block/fail."""
     if not SPIDEY_TTS_ENABLED:
         return None
     text = (text or "").strip()
@@ -596,7 +596,7 @@ def try_101_spidey_tts(text: str) -> Optional[Path]:
 
 
 def synth_pyttsx3_wav(text: str) -> Path:
-    """Peanut-style local robot voice → 16-bit mono WAV @ 16 kHz."""
+    """Peanut-style local robot voice -> 16-bit mono WAV @ 16 kHz."""
     import pyttsx3
 
     key = hashlib.sha1(f"pyttsx3|{text}".encode("utf-8")).hexdigest()[:16]
@@ -675,7 +675,7 @@ def synth_pyttsx3_wav(text: str) -> Path:
 
 
 def mp3_to_wav_16k(mp3_path: Path) -> Optional[Path]:
-    """Convert mp3→wav via pydub/ffmpeg if available; else None."""
+    """Convert mp3->wav via pydub/ffmpeg if available; else None."""
     wav_path = mp3_path.with_suffix(".wav")
     if wav_path.exists() and wav_path.stat().st_size > 44:
         return wav_path
@@ -693,7 +693,7 @@ def mp3_to_wav_16k(mp3_path: Path) -> Optional[Path]:
 def play_laptop(wav_path: Path) -> bool:
     """Play WAV on the laptop using shared-mode backends (avoid exclusive WASAPI).
 
-    Order: winsound (shared WinMM) → pygame DirectSound shared → pygame default.
+    Order: winsound (shared WinMM) -> pygame DirectSound shared -> pygame default.
     """
     path = str(wav_path)
     # 1) winsound / WinMM — always shared, survives exclusive-mode apps better
@@ -927,7 +927,7 @@ def push_wav_to_esp(
                 wait_s = approx_secs + 0.6
                 time.sleep(wait_s)
                 return True, (
-                    f"esp play_url {public} (queued→waited {wait_s:.1f}s after {elapsed:.2f}s ACK; "
+                    f"esp play_url {public} (queued->waited {wait_s:.1f}s after {elapsed:.2f}s ACK; "
                     f"prior: {errors[0] if errors else 'n/a'})"
                 )
             else:
@@ -1921,7 +1921,7 @@ def main() -> int:
             COVER_LISTEN.attach(handle_speak, PERSON_FOLLOWER)
             COVER_LISTEN.start(DEFAULT_ESP)
             print(
-                "Cover-listen          cover HC-SR04 → Listening! → Whisper/Groq → TTS",
+                "Cover-listen          cover HC-SR04 -> Listening! -> Whisper/Groq -> TTS",
                 flush=True,
             )
         except Exception as exc:
@@ -1933,7 +1933,7 @@ def main() -> int:
                 speak_fn=handle_speak,
                 play_wav_fn=push_wav_to_esp,
             )
-            print("Music                 POST /api/music/play  (yt-dlp → amp)", flush=True)
+            print("Music                 POST /api/music/play  (yt-dlp -> amp)", flush=True)
         except Exception as exc:
             print(f"Music attach failed   {exc}", flush=True)
     try:

@@ -2,11 +2,11 @@
 """
 Trace-E nav follower — motion = human (floor cam ~13–25 cm).
 
-- Primary acquire: frame-diff / absdiff → blobs → H1, H2 (left→right)
+- Primary acquire: frame-diff / absdiff -> blobs -> H1, H2 (left->right)
 - Sticky lock: IoU / centroid — stay on chosen Hn when others cross
 - YOLO person: optional bonus confirm only (never required)
-- No lock → active SEEK (slow pivot/scan); US close → back/turn away
-- Lock → follow closely (US-first range + differential drive)
+- No lock -> active SEEK (slow pivot/scan); US close -> back/turn away
+- Lock -> follow closely (US-first range + differential drive)
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ LOST_STOP_S = 2.2
 LOCK_CLEAR_S = 3.5
 DETECT_EVERY = 1
 DRIVE_HZ = 10.0
-# SR-04 hard bumper (cm) — stop BEFORE furniture/walls (was 28 → headbutts)
+# SR-04 hard bumper (cm) — stop BEFORE furniture/walls (was 28 -> headbutts)
 US_STOP_CM = 40.0
 US_HOLD_CM = 55.0
 US_SEEK_AVOID_CM = 50.0
@@ -78,13 +78,13 @@ MOTION_MERGE_IOU = 0.12
 MOTION_MERGE_DIST_FRAC = 0.14
 MOTION_H2_MIN_SEP_FRAC = 0.24
 MOTION_H2_MIN_AREA_RATIO = 0.32
-MOTION_EGO_GLOBAL = 6.5          # mean absdiff: above → seek pivot flood
+MOTION_EGO_GLOBAL = 6.5          # mean absdiff: above -> seek pivot flood
 MOTION_EGO_DIFF_BOOST = 16
 MOTION_HIT_FRAMES = 3            # need N detect hits before lock (anti-fake H1)
 MOTION_MISS_DROP = 4             # drop lock after N low-motion miss frames
 MOTION_LOCK_MIN = 5.0            # locked ROI must still move this much
 MOTION_CY_MIN = 0.28             # floor cam: prefer lower frame (legs)
-# Active seek — in-place pivot only; US close → reverse + turn (never creep into wall)
+# Active seek — in-place pivot only; US close -> reverse + turn (never creep into wall)
 SEEK_TURN = 26
 SEEK_FLIP_S = 3.8
 SEEK_BACK_PWM = 44
@@ -229,8 +229,8 @@ def follow_behind_drive(
     Short / floor cam: bbox area is often huge (legs), so range comes from
     ultrasonic when present. Bbox cx steers.
 
-    HC-SR04 is a HARD fence: ≤stop → reverse cue, ≤hold → zero forward.
-    Differential sign: person on RIGHT (cx>0.5) → left wheel faster → turn right.
+    HC-SR04 is a HARD fence: ≤stop -> reverse cue, ≤hold -> zero forward.
+    Differential sign: person on RIGHT (cx>0.5) -> left wheel faster -> turn right.
     """
     err = cx - 0.5
     if cfg.mirror_x:
@@ -297,7 +297,7 @@ def seek_scan_drive(
     """
     Active search when unlocked. Returns (L, R, mode, flip_dir).
     Never drives forward into obstacles — pivot / reverse / turn only.
-    flip_dir True → caller should reverse scan direction after obstacle.
+    flip_dir True -> caller should reverse scan direction after obstacle.
     """
     d = 1 if seek_dir >= 0 else -1
     have_us = _us_valid(us_cm, cfg)
@@ -639,7 +639,7 @@ class PersonFollower:
             self._locked_box = None
             self._smooth_box = None
             self._status.target_human = n
-            self._status.message = f"Target → Human {n} (motion re-lock)"
+            self._status.message = f"Target -> Human {n} (motion re-lock)"
             self._status.updated = time.time()
         return {"ok": True, "target_human": n, "target_id": n, **self.status()}
 
@@ -709,7 +709,7 @@ class PersonFollower:
                 mode="seek-scan",
                 esp=cfg.esp_base,
                 target_human=self._target_human,
-                message=f"Nav ON — SEEK for motion → H{self._target_human}",
+                message=f"Nav ON — SEEK for motion -> H{self._target_human}",
                 updated=time.time(),
             )
             CAM_HUB.ensure(cfg.esp_base)
@@ -1340,7 +1340,7 @@ class PersonFollower:
         period = 1.0 / max(4.0, cfg.drive_hz)
         seq = -1
         self._set_status(
-            message=f"SEEK — scan for motion → follow H{self._target_human}",
+            message=f"SEEK — scan for motion -> follow H{self._target_human}",
             mode="seek-scan",
             target_human=self._target_human,
         )
@@ -1480,7 +1480,7 @@ class PersonFollower:
             # Glitch floor only: treat sub-noise as CONTACT (hard stop), never drop US
             if us_cm is not None:
                 if us_cm < cfg.us_noise_cm:
-                    us_cm = 0.5  # contact / invalid-low → treat as bumper hit
+                    us_cm = 0.5  # contact / invalid-low -> treat as bumper hit
                 elif us_cm > cfg.us_max_cm:
                     us_cm = None
             mic_level = float(snap.get("mic_level") or 0.0)
@@ -1488,7 +1488,7 @@ class PersonFollower:
             miss_age = time.time() - last_seen if last_seen > 0 else 1e9
             now = time.time()
 
-            # Sudden US drop while moving → immediate reverse burst
+            # Sudden US drop while moving -> immediate reverse burst
             if (
                 us_cm is not None
                 and self._us_prev is not None
@@ -1505,7 +1505,7 @@ class PersonFollower:
                 cy = float(chosen["cy"])
                 area = float(chosen["area"])
                 person = True
-                # Display Hn of locked track (L→R label)
+                # Display Hn of locked track (L->R label)
                 target_id = int(chosen.get("id", target_id))
                 left, right, mode = follow_behind_drive(cx, area, cfg, us_cm)
                 if mode == "us-stop":
@@ -1590,7 +1590,7 @@ class PersonFollower:
                 and mic_level >= cfg.mic_presence_level
                 and str(mode).startswith("seek")
             ):
-                # Cam + mic: noise nearby while seeking → freeze and look
+                # Cam + mic: noise nearby while seeking -> freeze and look
                 left, right = 0, 0
                 mode = "seek-listen"
                 self._seek_look_until = max(self._seek_look_until, now + 0.85)
