@@ -229,7 +229,6 @@ class CamHub:
                                 self._cond.notify_all()
                             last_jpg = jpg
                             last_change = time.perf_counter()
-                            stream_failures = 0
                         fps_n += 1
                         now = time.perf_counter()
                         if now - fps_t0 >= 1.0:
