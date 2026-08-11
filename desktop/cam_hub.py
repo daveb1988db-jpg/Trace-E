@@ -119,77 +119,119 @@ class CamHub:
                 self._cond.wait(timeout=remaining)
 
     def _run(self) -> None:
-        url = stream_url(self._esp)
-        buf = bytearray()
         fps_t0 = time.perf_counter()
         fps_n = 0
+        stream_failures = 0
+        last_capture = 0.0
         while not self._stop.is_set():
-            fp = None
-            try:
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": "TraceE-CamHub/1.0",
-                        "Accept": "*/*",
-                        "Connection": "close",
-                        "Accept-Encoding": "identity",
-                    },
-                )
-                fp = urllib.request.urlopen(req, timeout=5)
-                with self._lock:
-                    self._error = ""
-                    self._running = True
-                buf.clear()
-                while not self._stop.is_set():
-                    chunk = fp.read(8192)
-                    if not chunk:
-                        raise ConnectionError("stream ended")
-                    buf.extend(chunk)
-                    if len(buf) > JPEG_MAX * 2:
+            if stream_failures < 3:
+                # Try MJPEG stream first
+                fp = None
+                try:
+                    url = stream_url(self._esp)
+                    req = urllib.request.Request(
+                        url,
+                        headers={
+                            "User-Agent": "TraceE-CamHub/1.0",
+                            "Accept": "*/*",
+                            "Connection": "close",
+                            "Accept-Encoding": "identity",
+                        },
+                    )
+                    fp = urllib.request.urlopen(req, timeout=4)
+                    with self._lock:
+                        self._error = ""
+                        self._running = True
+                    buf = bytearray()
+                    while not self._stop.is_set():
+                        chunk = fp.read(8192)
+                        if not chunk:
+                            raise ConnectionError("stream ended")
+                        buf.extend(chunk)
+                        if len(buf) > JPEG_MAX * 2:
+                            soi = buf.find(b"\xff\xd8")
+                            if soi < 0:
+                                buf.clear()
+                                continue
+                            del buf[:soi]
                         soi = buf.find(b"\xff\xd8")
                         if soi < 0:
-                            buf.clear()
+                            if len(buf) > 16384:
+                                buf.clear()
                             continue
-                        del buf[:soi]
-                    soi = buf.find(b"\xff\xd8")
-                    if soi < 0:
-                        if len(buf) > 16384:
-                            buf.clear()
-                        continue
-                    if soi > 0:
-                        del buf[:soi]
-                    eoi = buf.find(b"\xff\xd9", 2)
-                    if eoi < 0:
-                        continue
-                    jpg = bytes(buf[: eoi + 2])
-                    del buf[: eoi + 2]
-                    if len(jpg) < 800 or len(jpg) > JPEG_MAX:
-                        continue
-                    arr = np.frombuffer(jpg, dtype=np.uint8)
-                    bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                    with self._cond:
-                        self._jpeg = jpg
-                        self._bgr = bgr
-                        self._seq += 1
-                        self._cond.notify_all()
-                    fps_n += 1
+                        if soi > 0:
+                            del buf[:soi]
+                        eoi = buf.find(b"\xff\xd9", 2)
+                        if eoi < 0:
+                            continue
+                        jpg = bytes(buf[: eoi + 2])
+                        del buf[: eoi + 2]
+                        if len(jpg) < 800 or len(jpg) > JPEG_MAX:
+                            continue
+                        arr = np.frombuffer(jpg, dtype=np.uint8)
+                        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                        with self._cond:
+                            self._jpeg = jpg
+                            self._bgr = bgr
+                            self._seq += 1
+                            self._cond.notify_all()
+                        fps_n += 1
+                        now = time.perf_counter()
+                        if now - fps_t0 >= 1.0:
+                            with self._lock:
+                                self._fps = fps_n / (now - fps_t0)
+                            fps_t0 = now
+                            fps_n = 0
+                except Exception as exc:
+                    stream_failures += 1
+                    with self._lock:
+                        self._error = f"stream attempt {stream_failures}: {exc}"
+                        self._running = False
+                    time.sleep(0.4)
+                finally:
+                    if fp is not None:
+                        try:
+                            fp.close()
+                        except Exception:
+                            pass
+            else:
+                # Fallback: poll /capture (this ESP's stream may hang)
+                try:
+                    url = f"http://{esp_host(self._esp)}/capture"
+                    req = urllib.request.Request(
+                        url,
+                        headers={
+                            "User-Agent": "TraceE-CamHub/1.0",
+                            "Accept": "image/jpeg,*/*",
+                            "Connection": "close",
+                        },
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        jpg = resp.read()
+                    if 800 <= len(jpg) <= JPEG_MAX:
+                        arr = np.frombuffer(jpg, dtype=np.uint8)
+                        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                        with self._cond:
+                            self._jpeg = jpg
+                            self._bgr = bgr
+                            self._seq += 1
+                            self._cond.notify_all()
+                        fps_n += 1
+                        now = time.perf_counter()
+                        if now - fps_t0 >= 1.0:
+                            with self._lock:
+                                self._fps = fps_n / (now - fps_t0)
+                            fps_t0 = now
+                            fps_n = 0
                     now = time.perf_counter()
-                    if now - fps_t0 >= 1.0:
-                        with self._lock:
-                            self._fps = fps_n / (now - fps_t0)
-                        fps_t0 = now
-                        fps_n = 0
-            except Exception as exc:
-                with self._lock:
-                    self._error = str(exc)
-                    self._running = False
-                time.sleep(0.4)
-            finally:
-                if fp is not None:
-                    try:
-                        fp.close()
-                    except Exception:
-                        pass
+                    sleep = max(0.05, 0.1 - (now - last_capture))
+                    last_capture = now
+                    time.sleep(sleep)
+                except Exception as exc:
+                    with self._lock:
+                        self._error = str(exc)
+                        self._running = False
+                    time.sleep(0.5)
 
 
 CAM_HUB = CamHub()
