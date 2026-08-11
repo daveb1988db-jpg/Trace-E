@@ -1533,7 +1533,7 @@
         const [L, R] = resolveLR();
         postDrive(L, R);
       }
-    }, 300);
+    }, 400);
 
     function gestureIdFromEvent(e) {
       if (e.key === ' ') return ' ';
@@ -1727,7 +1727,7 @@
       espCam.src = src;
       attachCam._framePoll = setInterval(() => {
         espCam.src = streamUrl() + (streamUrl().includes('?') ? '&' : '?') + 't=' + Date.now();
-      }, 200);
+      }, 1500);
       // MJPEG often skips onload — poll naturalWidth so .live (opacity) flips on
       let tries = 0;
       attachCam._livePoll = setInterval(() => {
@@ -1861,7 +1861,7 @@
         .then(r => r.json())
         .then(st => {
           applyFollowStatus(st);
-          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
+          if (!followPoll) followPoll = setInterval(pollFollowStatus, 1500);
           if (!st.ok) followNote.textContent = st.error || st.message || 'Nav failed';
         })
         .catch(err => {
@@ -1919,7 +1919,7 @@
         .then(r => r.json())
         .then(st => {
           applyFollowStatus(st);
-          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
+          if (!followPoll) followPoll = setInterval(pollFollowStatus, 1500);
           if (followNote) followNote.textContent = st.message || ('Following Human ' + n);
         })
         .catch(() => {
@@ -2050,7 +2050,7 @@
       setInterval(discoverEsp, 30000);
       pollFollowStatus();
       pollListenStatus();
-      listenPoll = setInterval(pollListenStatus, 500);
+      listenPoll = setInterval(pollListenStatus, 2000);
     })();
   </script>
 </body>

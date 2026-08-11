@@ -238,7 +238,7 @@ class CamHub:
                             fps_t0 = now
                             fps_n = 0
                     now = time.perf_counter()
-                    sleep = max(0.3, 0.5 - (now - last_capture))
+                    sleep = max(0.8, 1.0 - (now - last_capture))
                     last_capture = now
                     time.sleep(sleep)
                 except Exception as exc:
