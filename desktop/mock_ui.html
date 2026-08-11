@@ -1374,8 +1374,7 @@
     function driveUrlProxy() { return BRAIN + '/api/esp/drive'; }
     // Single full-panel feed via brain cam hub only — never open ESP :82 from the browser
     function streamUrl() {
-      if (followOn) return BRAIN + '/api/follow/frame?esp=' + encodeURIComponent(espBase);
-      return BRAIN + '/api/cam/latest?esp=' + encodeURIComponent(espBase);
+      return BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
     }
     let useDirectDrive = false;
     function statusUrls() {
@@ -1725,9 +1724,6 @@
         camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: no stream';
       };
       espCam.src = src;
-      attachCam._framePoll = setInterval(() => {
-        espCam.src = streamUrl() + (streamUrl().includes('?') ? '&' : '?') + 't=' + Date.now();
-      }, 1500);
       // MJPEG often skips onload — poll naturalWidth so .live (opacity) flips on
       let tries = 0;
       attachCam._livePoll = setInterval(() => {
@@ -1861,7 +1857,7 @@
         .then(r => r.json())
         .then(st => {
           applyFollowStatus(st);
-          if (!followPoll) followPoll = setInterval(pollFollowStatus, 1500);
+          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
           if (!st.ok) followNote.textContent = st.error || st.message || 'Nav failed';
         })
         .catch(err => {
@@ -1919,7 +1915,7 @@
         .then(r => r.json())
         .then(st => {
           applyFollowStatus(st);
-          if (!followPoll) followPoll = setInterval(pollFollowStatus, 1500);
+          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
           if (followNote) followNote.textContent = st.message || ('Following Human ' + n);
         })
         .catch(() => {
@@ -2050,7 +2046,7 @@
       setInterval(discoverEsp, 30000);
       pollFollowStatus();
       pollListenStatus();
-      listenPoll = setInterval(pollListenStatus, 2000);
+      listenPoll = setInterval(pollListenStatus, 500);
     })();
   </script>
 </body>

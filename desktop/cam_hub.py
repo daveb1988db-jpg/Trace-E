@@ -121,7 +121,7 @@ class CamHub:
     def _run(self) -> None:
         fps_t0 = time.perf_counter()
         fps_n = 0
-        stream_failures = 3
+        stream_failures = 0
         last_capture = 0.0
         last_jpg = None
         last_change = 0.0
