@@ -110,7 +110,7 @@ class YoutubePlayer:
             self._set(phase="play", title=title, message=f"Playing {title}")
             if not self._play_wav:
                 raise RuntimeError("no amp play function")
-            ok, detail = self._play_wav(wav, self._esp)
+            ok, detail = self._play_wav(self._esp, wav)
             if not ok:
                 raise RuntimeError(detail or "amp play failed")
             self._set(phase="idle", message=f"Played: {title}")
