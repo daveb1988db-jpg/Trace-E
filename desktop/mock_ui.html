@@ -323,7 +323,7 @@
       height: 100%;
       object-fit: cover;
       display: block;
-      opacity: 0;
+      opacity: 1;
       z-index: 2;
       transform: none;
       background: #0a1a33;
@@ -1194,12 +1194,11 @@
     let lastFollowRunning = null;
 
     const params = new URLSearchParams(location.search);
-    const BRAIN = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '')
-      || ((location.port === '8787') ? '' : 'http://127.0.0.1:8787');
+    const BRAIN = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '');
     const storedEsp = localStorage.getItem('trace_e_esp') || '';
     const ESP_DEFAULT = params.get('esp')
-      || (storedEsp.includes('192.168.1.105') ? '' : storedEsp)
-      || 'http://192.168.1.104';
+      || (storedEsp && !storedEsp.includes('192.168.1.105') ? storedEsp : '')
+      || 'http://192.168.1.102';
     let espBase = ESP_DEFAULT.replace(/\/$/, '');
     let lastLR = [0, 0];
     let driveOk = false;
@@ -1619,7 +1618,6 @@
       espBase = v.replace(/\/$/, '');
       localStorage.setItem('trace_e_esp', espBase);
       espPill.textContent = 'ESP: ' + hostOnly(espBase) + ' (manual)';
-      useDirectDrive = true;
       attachCam();
       discoverEsp();
     });
