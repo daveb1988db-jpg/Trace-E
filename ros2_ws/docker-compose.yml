@@ -1,0 +1,13 @@
+services:
+  trace_e_follow:
+    build:
+      context: ..
+      dockerfile: ros2_ws/Dockerfile
+    network_mode: host
+    environment:
+      TRACE_E_ESP_BASE: ${TRACE_E_ESP_BASE:-http://192.168.1.104}
+      PYTHONUNBUFFERED: "1"
+    restart: unless-stopped
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /ws/src/trace_e_follow/trace_e_follow/follow_node.py"

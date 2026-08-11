@@ -109,10 +109,20 @@ See [README_ANDROID.md](README_ANDROID.md) and `android/TraceE/`.
 ## Layout
 
 ```
-desktop/          speak_server, mock_ui, android_mock, PyQt control
+desktop/          speak_server, follow_person, mock_ui, android_mock, PyQt control
 firmware/         ESP32 sketch + pins/motors (wifi_config.h gitignored)
 android/          TraceE Android wrapper
+ros2_ws/          Optional ROS 2 Jazzy Docker person-follow (same math as speak_server)
 ```
+
+### Person follow (Z400 brain)
+
+1. Run `python desktop/speak_server.py`
+2. Open HQ UI → **Follow ON**
+3. Stand in front of the cam — Trace drives fast when centered, turns slowly with differential
+4. **WASD** cancels follow
+
+Needs a live ESP cam on `:82/stream`. Optional ROS Docker: see `ros2_ws/README.md`.
 
 ## Secrets
 

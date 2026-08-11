@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TRACE-E BOT // WEB-QUARTERS</title>
+  <title>WEB-QUARTERS · TRACE-E</title>
   <style>
     :root {
       --spidey-red: #E53935;
@@ -29,114 +29,53 @@
       color: var(--ink);
       min-height: 100vh;
       background:
-        linear-gradient(180deg, rgba(255,255,255,.4) 0%, transparent 30%),
-        repeating-linear-gradient(0deg, transparent 0 44px, rgba(255,255,255,.2) 44px 46px),
-        repeating-linear-gradient(90deg, transparent 0 44px, rgba(255,255,255,.14) 44px 46px),
-        linear-gradient(180deg, #B8E4FF 0%, var(--room) 45%, #7FC0EA 100%);
-      padding: 14px 12px 24px;
+        radial-gradient(ellipse at 50% 0%, rgba(255,255,255,.55), transparent 55%),
+        linear-gradient(180deg, #7EC8F0 0%, #5BB4E8 38%, #3A9AD4 100%);
+      padding: 10px 12px 20px;
     }
 
     .hq {
-      max-width: 1120px;
+      max-width: 1080px;
       margin: 0 auto;
     }
 
-    /* ===== TITLE + HERO STRIP ===== */
+    /* Compact WEB-Quarters brand — not a wiki/hero page */
     .topbar {
       display: flex;
       flex-wrap: wrap;
-      align-items: flex-end;
+      align-items: center;
       justify-content: space-between;
       gap: 10px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     .topbar h1 {
       margin: 0;
       font-family: var(--display);
-      font-size: clamp(1.4rem, 3.8vw, 2.15rem);
+      font-size: clamp(1.25rem, 3.2vw, 1.85rem);
       font-weight: 900;
       color: var(--white);
       text-transform: uppercase;
-      text-shadow: 0 2px 0 rgba(30,80,130,.35), 0 0 16px rgba(255,255,255,.55);
+      letter-spacing: .5px;
+      text-shadow: 0 2px 0 rgba(30,80,130,.4), 0 0 14px rgba(255,255,255,.45);
     }
-    .topbar .tag {
-      font-weight: 800;
-      font-size: 0.75rem;
-      color: var(--web-blue-deep);
-      background: rgba(255,255,255,.65);
-      border: 2px solid rgba(255,255,255,.95);
-      border-radius: 999px;
-      padding: 5px 12px;
-    }
-
-    .hero-strip {
-      position: relative;
-      height: 88px;
-      border-radius: 18px;
-      overflow: hidden;
-      border: 3px solid var(--white);
-      box-shadow: 0 8px 18px rgba(40,90,140,.2);
-      margin-bottom: 12px;
-    }
-    .hero-strip img.hero {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center 30%;
-      display: block;
-      filter: saturate(1.05);
-    }
-    .hero-strip .shade {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, rgba(229,57,53,.45), transparent 40%, transparent 60%, rgba(30,136,229,.45));
-      pointer-events: none;
-    }
-
-    /* Team chips with real photos */
-    .team-chips {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    @media (max-width: 640px) {
-      .team-chips { grid-template-columns: 1fr; }
-    }
-    .chip {
+    .team-mini {
       display: flex;
       align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,.88);
-      border: 3px solid var(--ink);
-      border-radius: 16px;
-      padding: 6px 10px 6px 6px;
-      box-shadow: 3px 3px 0 rgba(0,0,0,.1);
+      gap: 6px;
     }
-    .chip.spidey { border-color: var(--spidey-red); }
-    .chip.ghost { border-color: var(--ghost-pink); }
-    .chip.spin { border-color: var(--spin-black); background: linear-gradient(90deg, #fff, #FFF8E1); }
-    .chip img {
-      width: 56px;
-      height: 56px;
+    .team-mini img {
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
       object-fit: cover;
       object-position: center top;
-      border: 3px solid var(--ink);
-      flex-shrink: 0;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 0 rgba(0,0,0,.15);
       background: var(--screen-blue);
     }
-    .chip.spidey img { border-color: var(--spidey-red); }
-    .chip.ghost img { border-color: var(--ghost-purple); }
-    .chip.spin img { border-color: var(--spin-yellow); }
-    .chip strong {
-      display: block;
-      font-family: var(--display);
-      font-size: 0.95rem;
-      font-weight: 900;
-      text-transform: uppercase;
-    }
-    .chip span { font-size: 0.7rem; font-weight: 700; opacity: .7; }
+    .team-mini img.spidey { box-shadow: 0 0 0 2px var(--spidey-red), 0 2px 0 rgba(0,0,0,.15); }
+    .team-mini img.ghost { box-shadow: 0 0 0 2px var(--ghost-pink), 0 2px 0 rgba(0,0,0,.15); }
+    .team-mini img.spin { box-shadow: 0 0 0 2px var(--spin-yellow), 0 2px 0 rgba(0,0,0,.15); }
 
     /* ===== LAYOUT: screen + ref ===== */
     .stage {
@@ -376,22 +315,24 @@
       background: #0a1a33;
     }
     .cam .cam-placeholder { z-index: 1; }
+    /* Full-bleed hub stream (raw or annotated) — never a PiP secondary feed */
     .cam img#espCam {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
-      display: none;
+      display: block;
+      opacity: 0;
       z-index: 2;
       transform: none;
-      background: transparent;
+      background: #0a1a33;
     }
     /* Live cam upright when flip-v is on (silent — no on-screen caption) */
     .cam.flip-v img#espCam { transform: scaleY(-1); }
     .cam.flip-180 img#espCam { transform: rotate(180deg); }
     .bezel-cam.flip-v { transform: translateX(-50%) scaleY(-1); }
-    .cam.live img#espCam { display: block; }
+    .cam.live img#espCam { opacity: 1; }
     .cam.live .cam-placeholder { display: none; }
     .crest.dim { opacity: .18; }
     .crest {
@@ -439,13 +380,24 @@
     }
 
     .desk-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .desk-drive {
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       gap: 12px;
       align-items: center;
     }
+    .desk-comms {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
     @media (max-width: 700px) {
-      .desk-grid { grid-template-columns: 1fr; justify-items: center; }
+      .desk-drive, .desk-comms { grid-template-columns: 1fr; justify-items: center; }
+      .desk-comms > * { width: 100%; }
     }
 
     .holos { display: flex; flex-direction: column; gap: 8px; }
@@ -516,6 +468,113 @@
       box-shadow: 0 1px 0 #6D1412;
     }
     .hint { margin: 6px 0 0; font-size: .68rem; font-weight: 800; color: rgba(255,255,255,.85); }
+
+    .follow-panel {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 3px solid rgba(255,255,255,.95);
+      background: linear-gradient(165deg, rgba(30,136,229,.35), rgba(229,57,53,.28));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+    }
+    .follow-panel .follow-title {
+      margin: 0 0 4px;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .95rem;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      text-shadow: 0 1px 0 rgba(0,0,0,.25);
+    }
+    .follow-panel .follow-sub {
+      margin: 0 0 8px;
+      font-size: .68rem;
+      font-weight: 700;
+      color: rgba(255,255,255,.88);
+    }
+    .follow-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .follow-btn {
+      border: 3px solid #fff;
+      border-radius: 999px;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .82rem;
+      padding: 7px 14px;
+      cursor: pointer;
+      text-transform: uppercase;
+      color: #fff;
+      background: linear-gradient(165deg, #64B5F6, var(--web-blue-deep));
+      box-shadow: 0 3px 0 #0D3A6E;
+    }
+    .follow-btn.stop {
+      background: linear-gradient(165deg, #FF6A4A, var(--spidey-red-deep));
+      box-shadow: 0 3px 0 #6D1412;
+    }
+    .follow-btn.human {
+      min-width: 2.6rem;
+      padding: 7px 10px;
+      background: linear-gradient(165deg, #81C784, #2E7D32);
+      box-shadow: 0 3px 0 #1B5E20;
+    }
+    .follow-btn.human[aria-pressed="true"] {
+      outline: 2px solid var(--spin-yellow);
+      filter: saturate(1.25) brightness(1.08);
+    }
+    .follow-btn[aria-pressed="true"] {
+      filter: saturate(1.2) brightness(1.05);
+      outline: 2px solid var(--spin-yellow);
+    }
+    .follow-note {
+      margin: 8px 0 0;
+      font-size: .7rem;
+      font-weight: 800;
+      color: rgba(255,255,255,.92);
+      min-height: 1.2em;
+    }
+    /* Nav boxes/HUD are burned into the main /api/esp/stream (annotate) feed */
+    .cam.nav-on {
+      outline: 3px solid #FFEB3B;
+      outline-offset: -3px;
+    }
+    .cam-nav-hud {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      z-index: 6;
+      display: none;
+      pointer-events: none;
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: .72rem;
+      letter-spacing: .3px;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,.65);
+      background: rgba(0,0,0,.55);
+      border: 2px solid rgba(255,235,59,.95);
+      border-radius: 10px;
+      padding: 6px 10px;
+      line-height: 1.35;
+      max-width: min(92%, 340px);
+    }
+    .cam.nav-on .cam-nav-hud { display: block; }
+    .follow-sensors {
+      margin: 6px 0 0;
+      font-size: .68rem;
+      font-weight: 800;
+      color: rgba(255,255,255,.92);
+      min-height: 1.1em;
+    }
+    .follow-panel.nav-live {
+      border-color: #FFEB3B;
+      box-shadow: 0 0 0 2px rgba(255,235,59,.35), inset 0 1px 0 rgba(255,255,255,.35);
+    }
 
     .gestures-btn {
       margin-top: 10px;
@@ -682,6 +741,19 @@
       text-transform: none;
       line-height: 1.25;
     }
+    .hq-field {
+      flex: 1;
+      min-width: 0;
+      border: 2px solid #fff;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font: inherit;
+      font-weight: 700;
+      font-size: .82rem;
+      background: rgba(255,255,255,.94);
+      color: var(--ink);
+      outline: none;
+    }
     .tts-row { display: flex; gap: 6px; flex-wrap: wrap; }
     .tts-row input {
       flex: 1 1 90px;
@@ -830,38 +902,13 @@
   <div class="cobweb-overlay" aria-hidden="true"></div>
   <div class="hq">
     <div class="topbar">
-      <h1>TRACE-E BOT // WEB-QUARTERS</h1>
-      <span class="tag">Spidey Friends · HQ Control</span>
+      <h1>WEB-QUARTERS · TRACE-E</h1>
+      <div class="team-mini" aria-label="Team Spidey">
+        <img class="spidey" src="assets/spidey.jpg" alt="Spidey" />
+        <img class="ghost" src="assets/ghost_spider.jpg" alt="Ghost-Spider" />
+        <img class="spin" src="assets/spin.jpg" alt="Spin" />
+      </div>
     </div>
-
-    <div class="hero-strip" aria-hidden="true">
-      <img class="hero" src="assets/team_hero.jpg" alt="" />
-      <div class="shade"></div>
-    </div>
-
-    <section class="team-chips" aria-label="Team Spidey">
-      <div class="chip spidey">
-        <img src="assets/spidey.jpg" alt="Spidey" />
-        <div>
-          <strong>Spidey</strong>
-          <span>Peter · red / blue</span>
-        </div>
-      </div>
-      <div class="chip ghost">
-        <img src="assets/ghost_spider.jpg" alt="Ghost-Spider" />
-        <div>
-          <strong>Ghost-Spider</strong>
-          <span>Gwen · pink / purple</span>
-        </div>
-      </div>
-      <div class="chip spin">
-        <img src="assets/spin.jpg" alt="Spin" />
-        <div>
-          <strong>Spin</strong>
-          <span>Miles · black / red</span>
-        </div>
-      </div>
-    </section>
 
     <div class="stage">
       <div>
@@ -922,6 +969,7 @@
                   <div class="cam-placeholder">WEB-STER LIVE VIEW<br />
                     <span style="font-size:.85em;opacity:.9">Swing into the mission…</span>
                   </div>
+                  <div class="cam-nav-hud" id="camNavHud" aria-live="polite">Nav idle</div>
                 </div>
               </div>
             </div>
@@ -965,6 +1013,7 @@
         <div class="console">
           <div class="desk-top">
             <div class="desk-grid">
+              <div class="desk-drive">
               <div class="holos">
                 <div class="holo">
                   <div class="name">Left Motor · LM</div>
@@ -980,28 +1029,17 @@
 
               <div class="pads-wrap" style="position:relative">
                 <div id="gesturesOverlay" class="gestures-overlay" aria-hidden="true">
-                  <div class="gestures-panel" role="dialog" aria-label="Gestures shortcut panel">
-                    <h3>Gestures · Shortcuts</h3>
-                    <p class="sub">All keys except WASD · tap or press on keyboard</p>
+                  <div class="gestures-panel" role="dialog" aria-label="HQ shortcuts">
+                    <h3>HQ Keys</h3>
+                    <p class="sub">Working shortcuts only · WASD always drives</p>
                     <div class="gesture-grid" id="gestureKeys">
                       <button type="button" class="gkey" data-g="e" title="Speak"><span class="k">E</span><span class="desc">Speak</span></button>
-                      <button type="button" class="gkey" data-g=" " title="Speak / confirm"><span class="k">Space</span><span class="desc">Speak</span></button>
+                      <button type="button" class="gkey" data-g=" " title="Speak"><span class="k">Space</span><span class="desc">Speak</span></button>
                       <button type="button" class="gkey" data-g="x" title="Emergency stop"><span class="k">X</span><span class="desc">Stop</span></button>
-                      <button type="button" class="gkey" data-g="Escape" title="Halt all"><span class="k">Esc</span><span class="desc">Halt</span></button>
-                      <button type="button" class="gkey" data-g="r" title="Reset pose"><span class="k">R</span><span class="desc">Reset</span></button>
-                      <button type="button" class="gkey" data-g="f" title="Face / look center"><span class="k">F</span><span class="desc">Face</span></button>
-                      <button type="button" class="gkey" data-g="ArrowUp" title="Look up"><span class="k">↑</span><span class="desc">Look</span></button>
-                      <button type="button" class="gkey" data-g="ArrowDown" title="Look down"><span class="k">↓</span><span class="desc">Look</span></button>
-                      <button type="button" class="gkey" data-g="ArrowLeft" title="Look left"><span class="k">←</span><span class="desc">Look</span></button>
-                      <button type="button" class="gkey" data-g="ArrowRight" title="Look right"><span class="k">→</span><span class="desc">Look</span></button>
-                      <button type="button" class="gkey" data-g="1" title="Wave gesture"><span class="k">1</span><span class="desc">Wave</span></button>
-                      <button type="button" class="gkey" data-g="2" title="Nod gesture"><span class="k">2</span><span class="desc">Nod</span></button>
-                      <button type="button" class="gkey" data-g="3" title="Dance gesture"><span class="k">3</span><span class="desc">Dance</span></button>
-                      <button type="button" class="gkey" data-g="4" title="Spin gesture"><span class="k">4</span><span class="desc">Spin</span></button>
-                      <button type="button" class="gkey" data-g="5" title="Webs up pose"><span class="k">5</span><span class="desc">Webs</span></button>
+                      <button type="button" class="gkey" data-g="Escape" title="Halt"><span class="k">Esc</span><span class="desc">Halt</span></button>
                       <button type="button" class="gkey" data-g="Enter" title="Send speak line"><span class="k">↵</span><span class="desc">Send</span></button>
                     </div>
-                    <p class="gestures-drive-note"><strong>WASD</strong> stays drive · gestures never remap those pads</p>
+                    <p class="gestures-drive-note"><strong>WASD</strong> = drive · cover front sensor to talk on Trace</p>
                   </div>
                 </div>
                 <p class="label">Web Drive · WASD</p>
@@ -1012,39 +1050,74 @@
                   <button type="button" class="pad" data-key="d" aria-label="Right D">D</button>
                 </div>
                 <button type="button" class="gestures-btn" id="gesturesBtn" aria-pressed="false" aria-controls="gesturesOverlay">
-                  Gestures
+                  Keys
                 </button>
-                <p class="hint">Power pads · or keyboard · Gestures = non-WASD</p>
+                <p class="hint">Hold pads or keyboard · Keys = Speak / Stop</p>
               </div>
 
+              <div class="holos desk-tip">
+                <div class="holo">
+                  <div class="name">Cover sensor</div>
+                  <div class="val" style="font-size:1rem;line-height:1.15">Talk</div>
+                  <div class="unit">Trace mic listens</div>
+                </div>
+                <div class="holo">
+                  <div class="name">Nav ON</div>
+                  <div class="val" style="font-size:1rem;line-height:1.15">Follow</div>
+                  <div class="unit">cam + bumper</div>
+                </div>
+              </div>
+              </div>
+
+              <div class="desk-comms">
               <div class="speak-panel talk-to">
                 <label for="talkToText">Talk to Trace</label>
-                <span class="sublabel">Send a message / command · Trace hears you</span>
+                <span class="sublabel">Chat · Trace answers on her amp</span>
                 <div class="tts-row">
                   <input id="talkToText" type="text" maxlength="160"
                     placeholder="Hey Trace-E, status check!" value="" />
                   <button type="button" id="talkToBtn">Send</button>
                 </div>
-                <p class="tts-note" id="talkToNote">Waiting for a message…</p>
+                <p class="tts-note" id="talkToNote">Waiting…</p>
               </div>
 
               <div class="speak-panel talk-through">
-                <label for="ttsText">Talk through Trace · Speak / Say</label>
-                <span class="sublabel">Peanut Ana voice (edge-tts / Groq / Gemini) → ESP amp · Spidey optional</span>
+                <label for="ttsText">Speak through Trace</label>
+                <span class="sublabel">Your words · Peanut Ana voice · her amp</span>
                 <div class="tts-row">
                   <input id="ttsText" type="text" maxlength="120"
-                    placeholder="Hey Ollie — webs up!" value="Hey Ollie, Peanut voice is back!" />
-                  <select id="ttsEngine" title="TTS engine" aria-label="TTS engine">
-                    <option value="peanut-auto" selected>Peanut auto (Ana→Groq→Gemini)</option>
-                    <option value="ana">Peanut Ana (edge-tts)</option>
-                    <option value="groq">Groq TTS</option>
-                    <option value="gemini">Gemini TTS</option>
-                    <option value="spidey">Spidey 101 (optional)</option>
-                    <option value="pyttsx3">pyttsx3 (last resort)</option>
+                    placeholder="Hey Ollie — webs up!" value="Hey Ollie, webs up!" />
+                  <select id="ttsEngine" title="Voice engine" aria-label="Voice engine">
+                    <option value="peanut-auto" selected>Peanut auto</option>
+                    <option value="ana">Ana</option>
+                    <option value="groq">Groq</option>
+                    <option value="gemini">Gemini</option>
                   </select>
                   <button type="button" id="speakBtn">Say!</button>
                 </div>
-                <p class="tts-note" id="speakNote">Peanut Ana → Groq/Gemini → ESP amp</p>
+                <p class="tts-note" id="speakNote">Voice → Trace amp</p>
+              </div>
+              </div>
+
+              <div class="follow-panel" id="followPanel">
+                <p class="follow-title">Mission · Follow &amp; Listen</p>
+                <p class="follow-sub">Cam + bumper + Trace mic · cover front sensor to talk</p>
+                <div class="follow-row">
+                  <button type="button" class="follow-btn" id="followStartBtn" aria-pressed="false">Nav ON</button>
+                  <button type="button" class="follow-btn stop" id="followStopBtn">Stop</button>
+                  <button type="button" class="follow-btn human" id="human1Btn" title="Follow Human 1">H1</button>
+                  <button type="button" class="follow-btn human" id="human2Btn" title="Follow Human 2">H2</button>
+                  <button type="button" class="follow-btn human" id="listenBtn" title="Start listening">Talk</button>
+                  <span class="pill" id="followPill">Nav: idle</span>
+                </div>
+                <p class="follow-sensors" id="followSensors">Sensors: —</p>
+                <p class="follow-note" id="followNote">Cover sensor to talk · Trace mic + amp</p>
+                <p class="follow-note" id="listenNote" style="opacity:.9">Listen: idle</p>
+                <div class="follow-row" style="margin-top:.35rem">
+                  <input id="musicQuery" class="hq-field" type="text" maxlength="80" placeholder="song for Ollie (YouTube)" />
+                  <button type="button" class="follow-btn human" id="musicBtn">Play</button>
+                </div>
+                <p class="follow-note" id="musicNote" style="opacity:.85">Music: idle</p>
               </div>
 
               <div class="esp-ip-row" title="ESP base URL">
@@ -1069,12 +1142,12 @@
       </div>
 
       <aside class="ref-card">
-        <img src="assets/hq_refs/web_quarters_screen.png" alt="Show reference: Web-Quarters screen" />
-        <p>In-show ref<br />speakers + screen</p>
+        <img src="assets/hq_refs/web_quarters_screen.png" alt="In-show WEB-Quarters screen" />
+        <p>WEB-STER<br />in-show look</p>
       </aside>
     </div>
 
-    <footer>TRACE-E BOT × Web-Quarters · Spidey Friends colours + real team pics · personal HQ mock</footer>
+    <footer>WEB-Quarters HQ · Trace-E · drive · follow · talk · songs</footer>
   </div>
 
   <script>
@@ -1106,6 +1179,19 @@
     const motorPill = document.getElementById('motorPill');
     const motorLed = document.getElementById('motorLed');
     const espPill = document.getElementById('espPill');
+    const followStartBtn = document.getElementById('followStartBtn');
+    const followStopBtn = document.getElementById('followStopBtn');
+    const human1Btn = document.getElementById('human1Btn');
+    const human2Btn = document.getElementById('human2Btn');
+    const followNote = document.getElementById('followNote');
+    const followPill = document.getElementById('followPill');
+    const followPanel = document.getElementById('followPanel');
+    const followSensors = document.getElementById('followSensors');
+    const camNavHud = document.getElementById('camNavHud');
+    let followOn = false;
+    let followPoll = null;
+    let followTargetId = null;
+    let lastFollowRunning = null;
 
     const params = new URLSearchParams(location.search);
     const BRAIN = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '')
@@ -1290,14 +1376,13 @@
       return 'http://' + hostOnly(espBase) + ':8765/api/drive';
     }
     function driveUrlProxy() { return BRAIN + '/api/esp/drive'; }
-    function streamUrlDirect() {
-      return 'http://' + hostOnly(espBase) + ':82/stream';
-    }
-    function streamUrlProxy() {
-      return BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
+    // Single full-panel feed via brain cam hub only — never open ESP :82 from the browser
+    function streamUrl() {
+      let u = BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
+      if (followOn) u += '&annotate=1&nav=1';
+      return u;
     }
     let useDirectDrive = true;
-    let useDirectCam = true;
     function statusUrls() {
       // One known ESP first — avoid scanning every candidate every poll (was a lag hammer).
       const urls = [];
@@ -1404,17 +1489,6 @@
       ' ': 'Speak',
       x: 'STOP motors',
       Escape: 'HALT all',
-      r: 'Reset pose',
-      f: 'Face center',
-      ArrowUp: 'Look ↑',
-      ArrowDown: 'Look ↓',
-      ArrowLeft: 'Look ←',
-      ArrowRight: 'Look →',
-      '1': 'Wave',
-      '2': 'Nod',
-      '3': 'Dance',
-      '4': 'Spin',
-      '5': 'Webs up',
       Enter: 'Send TTS',
     };
 
@@ -1423,7 +1497,7 @@
     function setGestures(on) {
       gesturesOn = on;
       gesturesBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      gesturesBtn.textContent = on ? 'Gestures · ON' : 'Gestures';
+      gesturesBtn.textContent = on ? 'Keys · ON' : 'Keys';
       gesturesOverlay.classList.toggle('open', on);
       gesturesOverlay.setAttribute('aria-hidden', on ? 'false' : 'true');
       document.body.classList.toggle('gestures-on', on);
@@ -1449,7 +1523,13 @@
         postDrive(L, R);
       }
     }
-    function down(k) { if ('wasd'.includes(k)) { keys.add(k); syncPads(); } }
+    function down(k) {
+      if ('wasd'.includes(k)) {
+        if (followOn) stopFollow('WASD takeover');
+        keys.add(k);
+        syncPads();
+      }
+    }
     function up(k) { if ('wasd'.includes(k)) { keys.delete(k); syncPads(); } }
 
     // Keep failsafe alive while keys held (~450ms on ESP) — coalesced, not queued
@@ -1463,10 +1543,8 @@
     function gestureIdFromEvent(e) {
       if (e.key === ' ') return ' ';
       if (e.key === 'Escape' || e.key === 'Enter') return e.key;
-      if (e.key.startsWith('Arrow')) return e.key;
-      if (/^[1-5]$/.test(e.key)) return e.key;
       const k = e.key.toLowerCase();
-      if ('exrf'.includes(k)) return k;
+      if ('ex'.includes(k)) return k;
       return null;
     }
 
@@ -1542,7 +1620,6 @@
       espBase = v.replace(/\/$/, '');
       localStorage.setItem('trace_e_esp', espBase);
       espPill.textContent = 'ESP: ' + hostOnly(espBase) + ' (manual)';
-      useDirectCam = true;
       useDirectDrive = true;
       attachCam();
       discoverEsp();
@@ -1634,40 +1711,40 @@
       camBox.classList.add('live');
       crest.classList.add('dim');
       camLed.classList.remove('warn');
-      const via = useDirectCam ? 'direct' : 'proxy';
-      camPill.innerHTML = '<span class="led" id="camLed"></span> Cam: live · ' + via;
+      camPill.innerHTML = '<span class="led" id="camLed"></span> Cam: live · hub'
+        + (followOn ? ' · nav overlay' : '');
     }
 
-    function attachCam(forceProxy) {
+    function attachCam() {
       applyCamFlip();
-      const preferDirect = forceProxy ? false : useDirectCam;
-      const base = preferDirect ? streamUrlDirect() : streamUrlProxy();
+      const base = streamUrl();
       // Cache-bust only when (re)attaching — never on a poll timer
       const src = base + (base.includes('?') ? '&' : '?') + 't=' + Date.now();
       clearTimeout(attachCam._fallbackT);
+      clearInterval(attachCam._livePoll);
       espCam.onload = () => markCamLive();
       espCam.onerror = () => {
-        if (preferDirect && !forceProxy) {
-          // Direct :82 failed — fall back to brain proxy once
-          useDirectCam = false;
-          attachCam(true);
-          return;
-        }
         camBox.classList.remove('live');
         crest.classList.remove('dim');
         camLed.classList.add('warn');
         camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: no stream';
       };
       espCam.src = src;
-      // If direct hangs (wedged single-client :82), fall back to proxy
-      attachCam._fallbackT = setTimeout(() => {
-        if (preferDirect && !forceProxy && !(espCam.naturalWidth > 0)) {
-          useDirectCam = false;
-          attachCam(true);
-          return;
+      // MJPEG often skips onload — poll naturalWidth so .live (opacity) flips on
+      let tries = 0;
+      attachCam._livePoll = setInterval(() => {
+        tries += 1;
+        if (espCam.naturalWidth > 0) {
+          clearInterval(attachCam._livePoll);
+          markCamLive();
+        } else if (tries >= 40) {
+          clearInterval(attachCam._livePoll);
+          if (!(espCam.naturalWidth > 0)) {
+            camLed.classList.add('warn');
+            camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: waiting for hub…';
+          }
         }
-        if (espCam.naturalWidth > 0 || espCam.complete) markCamLive();
-      }, 3500);
+      }, 250);
     }
 
     function nudgeCamQuality() {
@@ -1682,12 +1759,300 @@
       }
     }
 
+    function brainUrl(path) {
+      const base = BRAIN || '';
+      return base + path;
+    }
+
+    function applyFollowStatus(st) {
+      if (!st) return;
+      followOn = !!st.running;
+      followTargetId = (st.target_id != null) ? Number(st.target_id)
+        : ((st.target_human != null) ? Number(st.target_human) : null);
+      if (followStartBtn) followStartBtn.setAttribute('aria-pressed', followOn ? 'true' : 'false');
+      if (human1Btn) human1Btn.setAttribute('aria-pressed', followTargetId === 1 ? 'true' : 'false');
+      if (human2Btn) human2Btn.setAttribute('aria-pressed', followTargetId === 2 ? 'true' : 'false');
+      if (followPanel) followPanel.classList.toggle('nav-live', followOn);
+      if (camBox) camBox.classList.toggle('nav-on', followOn);
+      const lockTxt = (st.lock_state === 'LOST') ? 'LOST·STOP'
+        : (st.person ? 'LOCK' : 'SEEK');
+      const tgtTxt = followTargetId ? ('H' + followTargetId) : 'auto';
+      if (followPill) {
+        followPill.textContent = followOn
+          ? ('Nav: ' + (st.mode || 'on') + ' · ' + lockTxt + ' · ' + tgtTxt
+            + (st.source ? ' · ' + st.source : ''))
+          : 'Nav: idle';
+      }
+      if (followNote) {
+        followNote.textContent = st.message
+          || (followOn
+            ? 'Boxes on main cam · say “human 1” / “human 2”'
+            : 'WASD cancels · one full cam feed (hub overlay when Nav ON)');
+      }
+      if (followSensors) {
+        const us = (st.ultrasonic_cm != null) ? (Number(st.ultrasonic_cm).toFixed(0) + 'cm') : '—';
+        const mic = (st.mic_level != null) ? Number(st.mic_level).toFixed(2) : '—';
+        const micSrc = st.mic_src ? ('/' + st.mic_src) : '';
+        const boxes = (st.boxes != null) ? st.boxes : '—';
+        const humans = Array.isArray(st.humans)
+          ? st.humans.map(h => 'H' + h.id + (h.active ? '*' : '')).join(' ')
+          : '';
+        const miss = (st.sensors && st.sensors.missing) ? st.sensors.missing.join(',') : '';
+        followSensors.textContent = 'Target:' + tgtTxt
+          + (humans ? (' · ' + humans) : '')
+          + ' · ' + lockTxt
+          + ' · boxes:' + boxes
+          + ' · US:' + us
+          + ' · mic:' + mic + micSrc
+          + (st.obstacle ? (' · !' + st.obstacle) : '')
+          + (miss ? (' · missing:' + miss) : '');
+      }
+      if (camNavHud) {
+        if (!followOn) {
+          camNavHud.textContent = 'Nav idle';
+        } else {
+          const usN = st.ultrasonic_cm != null ? Number(st.ultrasonic_cm) : null;
+          let usHud = usN != null ? (' · US ' + usN.toFixed(0) + 'cm') : '';
+          const m = String(st.mode || '');
+          if (m.startsWith('us-') || m.startsWith('seek-avoid') || m === 'seek-back') {
+            usHud = ' · !!' + m.toUpperCase() + (usN != null ? (' ' + usN.toFixed(0) + 'cm') : '');
+          } else if (usN != null && usN <= 40) {
+            usHud = ' · !!US-STOP ' + usN.toFixed(0) + 'cm';
+          } else if (usN != null && usN <= 55) {
+            usHud = ' · !!US-HOLD ' + usN.toFixed(0) + 'cm';
+          }
+          camNavHud.textContent = 'NAV ' + m.toUpperCase()
+            + ' · ' + lockTxt
+            + ' · ' + tgtTxt
+            + ' · L' + (st.left != null ? st.left : 0)
+            + ' R' + (st.right != null ? st.right : 0)
+            + usHud;
+        }
+      }
+      if (followOn && st.left != null && motorPill) {
+        motorPill.innerHTML = '<span class="led" id="motorLed"></span> Motors: L'
+          + st.left + ' R' + st.right;
+        if (motorLed) motorLed.classList.remove('warn');
+      }
+      if (followOn && driveStatus) {
+        driveStatus.textContent = 'Nav ' + (st.mode || '') + ' · ' + tgtTxt + ' · L' + st.left + ' R' + st.right;
+      }
+      // Rebind main feed when nav flips so annotate=1 sticks to one full-bleed stream
+      if (lastFollowRunning !== followOn) {
+        lastFollowRunning = followOn;
+        attachCam();
+      }
+    }
+
+    function pollFollowStatus() {
+      fetch(brainUrl('/api/follow/status'), { cache: 'no-store' })
+        .then(r => r.json())
+        .then(applyFollowStatus)
+        .catch(() => {});
+    }
+
+    function startFollow() {
+      followNote.textContent = 'Starting nav brain…';
+      followOn = true; // so streamUrl adds annotate=1 before attach
+      lastFollowRunning = null; // force rebind in applyFollowStatus
+      fetch(brainUrl('/api/follow/start'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ esp: espBase }),
+      })
+        .then(r => r.json())
+        .then(st => {
+          applyFollowStatus(st);
+          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
+          if (!st.ok) followNote.textContent = st.error || st.message || 'Nav failed';
+        })
+        .catch(err => {
+          followOn = false;
+          followNote.textContent = 'Brain offline — start speak_server.py';
+          console.warn(err);
+        });
+    }
+
+    function stopFollow(reason) {
+      fetch(brainUrl('/api/follow/stop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || 'ui stop' }),
+      })
+        .then(r => r.json())
+        .then(st => {
+          applyFollowStatus(st);
+          followOn = false;
+          if (followPanel) followPanel.classList.remove('nav-live');
+          if (camBox) camBox.classList.remove('nav-on');
+          if (followStartBtn) followStartBtn.setAttribute('aria-pressed', 'false');
+          if (followPill) followPill.textContent = 'Nav: idle';
+          if (followNote) followNote.textContent = reason || 'Nav stopped';
+          if (camNavHud) camNavHud.textContent = 'Nav idle';
+          // applyFollowStatus already rebound raw hub when running→false
+          if (lastFollowRunning !== false) {
+            lastFollowRunning = false;
+            attachCam();
+          }
+        })
+        .catch(() => {
+          followOn = false;
+          if (followNote) followNote.textContent = 'Nav stop requested';
+        });
+    }
+
+    function selectHuman(n) {
+      followTargetId = n;
+      if (human1Btn) human1Btn.setAttribute('aria-pressed', n === 1 ? 'true' : 'false');
+      if (human2Btn) human2Btn.setAttribute('aria-pressed', n === 2 ? 'true' : 'false');
+      const body = { target_human: n, target_id: n, esp: espBase };
+      const url = followOn
+        ? brainUrl('/api/follow/target')
+        : brainUrl('/api/follow/start');
+      if (!followOn) {
+        followOn = true;
+        lastFollowRunning = null;
+      }
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+        .then(r => r.json())
+        .then(st => {
+          applyFollowStatus(st);
+          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
+          if (followNote) followNote.textContent = st.message || ('Following Human ' + n);
+        })
+        .catch(() => {
+          if (followNote) followNote.textContent = 'Brain offline — start speak_server.py';
+        });
+    }
+
+    const listenBtn = document.getElementById('listenBtn');
+    const listenNote = document.getElementById('listenNote');
+    let listenPoll = null;
+    let listenRecording = false;
+    let listenMedia = null;
+    let listenRecorder = null;
+    let lastListenPhase = '';
+
+    async function startBrowserListenCapture() {
+      if (listenRecording) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (listenNote) listenNote.textContent = 'Listen: no browser mic — allow mic or use Talk button after typing';
+        return;
+      }
+      try {
+        listenMedia = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
+        });
+        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+        listenRecorder = mime ? new MediaRecorder(listenMedia, { mimeType: mime }) : new MediaRecorder(listenMedia);
+        const chunks = [];
+        listenRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+        listenRecorder.onstop = async () => {
+          try {
+            const blob = new Blob(chunks, { type: listenRecorder.mimeType || 'audio/webm' });
+            await fetch(brainUrl('/api/listen/audio'), {
+              method: 'POST',
+              headers: { 'Content-Type': blob.type || 'audio/webm' },
+              body: blob
+            });
+          } catch (_) {}
+          if (listenMedia) {
+            listenMedia.getTracks().forEach(t => t.stop());
+            listenMedia = null;
+          }
+          listenRecording = false;
+          listenRecorder = null;
+        };
+        listenRecording = true;
+        listenRecorder.start(250);
+        if (listenNote) listenNote.textContent = 'Listen: recording… talk now';
+        setTimeout(() => {
+          if (listenRecorder && listenRecorder.state !== 'inactive') listenRecorder.stop();
+        }, 5500);
+      } catch (err) {
+        if (listenNote) listenNote.textContent = 'Listen: mic blocked — allow microphone for this page';
+        listenRecording = false;
+      }
+    }
+
+    function pollListenStatus() {
+      fetch(brainUrl('/api/listen/status'), { cache: 'no-store' })
+        .then(r => r.json())
+        .then(st => {
+          if (!st || !st.ok && st.enabled === false) return;
+          const phase = st.phase || 'idle';
+          if (listenNote) {
+            listenNote.textContent = 'Listen: ' + phase
+              + (st.heard ? (' · “' + String(st.heard).slice(0, 48) + '”') : '')
+              + (st.reply ? (' → ' + String(st.reply).slice(0, 48)) : '');
+          }
+          if (phase === 'listening' && lastListenPhase !== 'listening') {
+            startBrowserListenCapture();
+          }
+          lastListenPhase = phase;
+        })
+        .catch(() => {});
+    }
+
+    if (listenBtn) {
+      listenBtn.addEventListener('click', () => {
+        fetch(brainUrl('/api/listen/start'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+          .then(r => r.json())
+          .then(j => {
+            if (listenNote) listenNote.textContent = j.ok ? 'Listen: starting…' : ('Listen: ' + (j.error || 'failed'));
+          })
+          .catch(() => { if (listenNote) listenNote.textContent = 'Listen: brain offline'; });
+      });
+    }
+
+    const musicBtn = document.getElementById('musicBtn');
+    const musicQuery = document.getElementById('musicQuery');
+    const musicNote = document.getElementById('musicNote');
+    function playMusic() {
+      const q = (musicQuery && musicQuery.value || '').trim();
+      if (!q) { if (musicNote) musicNote.textContent = 'Music: type a song name'; return; }
+      if (musicNote) musicNote.textContent = 'Music: fetching…';
+      fetch(brainUrl('/api/music/play'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q })
+      }).then(r => r.json()).then(j => {
+        if (musicNote) musicNote.textContent = j.ok ? ('Music: starting “' + q + '”') : ('Music: ' + (j.error || 'fail'));
+      }).catch(() => { if (musicNote) musicNote.textContent = 'Music: brain offline'; });
+    }
+    if (musicBtn) musicBtn.addEventListener('click', playMusic);
+    if (musicQuery) musicQuery.addEventListener('keydown', e => { if (e.key === 'Enter') playMusic(); });
+    setInterval(() => {
+      fetch(brainUrl('/api/music/status'), { cache: 'no-store' })
+        .then(r => r.json())
+        .then(st => {
+          if (!musicNote || !st) return;
+          musicNote.textContent = 'Music: ' + (st.phase || 'idle')
+            + (st.title ? (' · ' + String(st.title).slice(0, 40)) : '')
+            + (st.last_error ? (' · ' + String(st.last_error).slice(0, 40)) : '');
+        }).catch(() => {});
+    }, 1200);
+
+    if (followStartBtn) followStartBtn.addEventListener('click', startFollow);
+    if (followStopBtn) followStopBtn.addEventListener('click', () => stopFollow('ui stop'));
+    if (human1Btn) human1Btn.addEventListener('click', () => selectHuman(1));
+    if (human2Btn) human2Btn.addEventListener('click', () => selectHuman(2));
+
     (async () => {
       await discoverEsp();
       nudgeCamQuality();
       attachCam();
       // Status poll was 8s × many IPs — now ~30s, single host
       setInterval(discoverEsp, 30000);
+      pollFollowStatus();
+      pollListenStatus();
+      listenPoll = setInterval(pollListenStatus, 500);
     })();
   </script>
 </body>

@@ -7,6 +7,10 @@ Endpoints:
   GET  /api/health
   POST /api/talk          → Talk TO Trace (chat/command stub)
   POST /api/speak         → Talk THROUGH Trace (TTS → ESP amp, laptop fallback)
+  POST /api/follow/start  → Person follow (cam detect → differential drive)
+  POST /api/follow/stop
+  GET  /api/follow/status
+  GET  /api/follow/frame  → Annotated JPEG overlay
 
 TTS (Peanut Ana PRIMARY for Ollie):
   1) edge-tts en-US-AnaNeural  (Peanut's working Ana voice)
@@ -47,6 +51,25 @@ CACHE_DIR = DESKTOP_DIR / "_tts_cache"
 SFX_DIR = DESKTOP_DIR / "assets" / "sfx"
 CACHE_DIR.mkdir(exist_ok=True)
 SFX_DIR.mkdir(parents=True, exist_ok=True)
+
+# Person follow (OpenCV HOG → differential drive). Optional ROS2 Docker wraps same module.
+try:
+    from cam_hub import CAM_HUB
+except Exception:  # pragma: no cover
+    CAM_HUB = None  # type: ignore
+try:
+    from follow_person import FOLLOWER as PERSON_FOLLOWER
+except Exception:  # pragma: no cover
+    PERSON_FOLLOWER = None  # type: ignore
+try:
+    from cover_listen import COVER_LISTEN
+except Exception:  # pragma: no cover
+    COVER_LISTEN = None  # type: ignore
+try:
+    from youtube_play import YT_PLAYER, parse_music_command
+except Exception:  # pragma: no cover
+    YT_PLAYER = None  # type: ignore
+    parse_music_command = None  # type: ignore
 
 # Load API keys from Trace-E .env and/or peanut-robot .env (never commit real .env)
 def _load_dotenv_files() -> List[str]:
@@ -1066,25 +1089,76 @@ def handle_talk(text: str) -> dict:
     text = (text or "").strip()
     if not text:
         return {"ok": False, "error": "empty"}
-    # Stub reply — ready for future LLM / command router
     lower = text.lower()
-    if any(w in lower for w in ("hello", "hi", "hey")):
-        reply = "Webs up! Trace-E heard you."
+    reply = ""
+    follow_action: Optional[dict] = None
+
+    try:
+        from follow_person import parse_human_command  # type: ignore
+    except Exception:
+        parse_human_command = None  # type: ignore
+
+    target_id = parse_human_command(text) if parse_human_command else None
+    music_q = parse_music_command(text) if parse_music_command else None
+    if target_id and PERSON_FOLLOWER is not None:
+        st = PERSON_FOLLOWER.status()
+        if not st.get("running"):
+            PERSON_FOLLOWER.start(esp_base=DEFAULT_ESP, target_human=target_id)
+        else:
+            PERSON_FOLLOWER.set_target_human(target_id)
+        follow_action = {"target_human": target_id, "target_id": target_id, "nav": True}
+        reply = f"Copy — staying just behind Human {target_id}."
+    elif music_q and YT_PLAYER is not None:
+        YT_PLAYER.play_async(music_q)
+        reply = f"Okay Ollie — playing {music_q}!"
+    elif any(w in lower for w in ("nav off", "stop follow", "stop nav", "cancel follow")):
+        if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
+            PERSON_FOLLOWER.stop("voice stop")
+            follow_action = {"nav": False}
+            reply = "Nav off — motors stopped."
+        else:
+            reply = "Nav is already idle."
+    elif any(w in lower for w in ("nav on", "start follow", "follow me", "start nav", "follow ollie")):
+        if PERSON_FOLLOWER is not None:
+            PERSON_FOLLOWER.start(esp_base=DEFAULT_ESP, target_human=1)
+            follow_action = {"nav": True, "target_human": 1}
+            reply = "Nav on — I'll stick with Ollie as Human 1."
+        else:
+            reply = "Follow module unavailable."
+    elif any(w in lower for w in ("hello", "hi", "hey")):
+        reply = "Hey Ollie! Trace-E is ready to play."
     elif any(w in lower for w in ("status", "ready")):
-        reply = "Systems online · cam · drive · amp."
+        reply = "Systems online · cam · drive · amp · songs."
     elif any(w in lower for w in ("stop", "halt")):
+        if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
+            PERSON_FOLLOWER.stop("voice halt")
+            follow_action = {"nav": False, "motors": 0}
         reply = "Copy that — standing by."
     else:
-        reply = f"Trace heard: “{text[:80]}”"
+        # Kid-safe cloud chat when keys exist; else short stub
+        reply = None
+        if COVER_LISTEN is not None:
+            try:
+                reply = COVER_LISTEN._kid_chat(text)
+            except Exception:
+                reply = None
+        if not reply:
+            reply = f"Trace heard: “{text[:80]}”"
+
     with _talk_lock:
         _last_talk.update({"text": text, "reply": reply, "ts": time.time()})
-    return {
+    out = {
         "ok": True,
         "heard": text,
         "reply": reply,
-        "model": "trace-e",
+        "model": "trace-e-kid",
         "chirp": "talk_heard",
     }
+    if follow_action:
+        out["follow"] = follow_action
+        if PERSON_FOLLOWER is not None:
+            out["follow_status"] = PERSON_FOLLOWER.status()
+    return out
 
 
 def resolve_sfx_file(situation: str, file: Optional[str] = None, mode: str = "situational") -> Optional[Path]:
@@ -1343,6 +1417,24 @@ class TraceHandler(SimpleHTTPRequestHandler):
                     "esp_default": DEFAULT_ESP,
                     "port": PORT,
                     "proxies": ["/api/esp/stream", "/api/esp/drive", "/api/esp/status"],
+                    "follow": {
+                        "available": PERSON_FOLLOWER is not None,
+                        "status": (PERSON_FOLLOWER.status() if PERSON_FOLLOWER else None),
+                        "endpoints": [
+                            "/api/follow/start",
+                            "/api/follow/stop",
+                            "/api/follow/target",
+                            "/api/follow/status",
+                            "/api/follow/frame",
+                        ],
+                    },
+                    "listen": (
+                        COVER_LISTEN.status() if COVER_LISTEN is not None else {"enabled": False}
+                    ),
+                    "music": (
+                        YT_PLAYER.status() if YT_PLAYER is not None else {"enabled": False}
+                    ),
+                    "cam_hub": (CAM_HUB.status() if CAM_HUB else None),
                     "sfx": sorted(p.name for p in SFX_DIR.glob("*.wav")),
                     "tts": {
                         "default": DEFAULT_TTS_ENGINE,
@@ -1374,7 +1466,23 @@ class TraceHandler(SimpleHTTPRequestHandler):
             self._send(code, body, ctype)
             return
 
-        if path in ("/api/esp/status", "/api/esp/discover"):
+        if path in ("/api/listen/status", "/api/listen"):
+            if COVER_LISTEN is None:
+                code, body, ctype = _json_bytes({"ok": False, "enabled": False}, 503)
+            else:
+                code, body, ctype = _json_bytes({"ok": True, **COVER_LISTEN.status()})
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/music/status", "/api/music"):
+            if YT_PLAYER is None:
+                code, body, ctype = _json_bytes({"ok": False, "enabled": False}, 503)
+            else:
+                code, body, ctype = _json_bytes({"ok": True, "enabled": True, **YT_PLAYER.status()})
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/status", "/api/esp/status", "/api/esp/discover"):
             esp = (q.get("esp") or q.get("esp_base") or [None])[0]
             code, body, ctype = proxy_esp_status(esp)
             self._send(code, body, ctype)
@@ -1386,53 +1494,165 @@ class TraceHandler(SimpleHTTPRequestHandler):
             self._send(code, body, ctype)
             return
 
-        if path in ("/api/esp/stream", "/api/cam/stream"):
-            esp = (q.get("esp") or q.get("esp_base") or [None])[0]
-            url = _esp_stream_url(esp)
-            try:
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": _UA,
-                        "Accept": "*/*",
-                        "Connection": "close",
-                        "Accept-Encoding": "identity",
-                    },
+        if path in ("/api/follow/status", "/api/follow"):
+            if PERSON_FOLLOWER is None:
+                code, body, ctype = _json_bytes(
+                    {"ok": False, "error": "follow module missing (opencv?)"}, 503
                 )
-                upstream = urllib.request.urlopen(req, timeout=8)
-            except Exception as exc:
-                msg = json.dumps({"ok": False, "error": str(exc), "url": url}).encode("utf-8")
-                self._send(502, msg, "application/json")
-                return
-            try:
-                ctype = upstream.headers.get(
-                    "Content-Type", "multipart/x-mixed-replace; boundary=frame"
-                )
-                # Zero-lag MJPEG proxy: chunked passthrough, no gzip, flush every write
-                self.send_response(200)
-                self._cors()
-                self.send_header("Content-Type", ctype)
-                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.send_header("Content-Encoding", "identity")
-                self.send_header("X-Accel-Buffering", "no")
-                self.send_header("Connection", "close")
-                self.end_headers()
-                try:
-                    # Disable Nagle on client socket if available
-                    sock = getattr(self.connection, "sock", None) or self.connection
-                    if hasattr(sock, "setsockopt"):
-                        import socket as _socket
+            else:
+                code, body, ctype = _json_bytes(PERSON_FOLLOWER.status())
+            self._send(code, body, ctype)
+            return
 
-                        sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1)
-                except Exception:
-                    pass
+        if path == "/api/follow/frame":
+            if PERSON_FOLLOWER is None:
+                self._send(503, b'{"ok":false,"error":"follow unavailable"}', "application/json")
+                return
+            jpg = PERSON_FOLLOWER.annotated_jpeg()
+            if not jpg:
+                jpg, _ = PERSON_FOLLOWER.wait_annotated(timeout=0.6, after_seq=-1)
+            if not jpg and CAM_HUB is not None:
+                jpg = CAM_HUB.latest_jpeg()
+            if not jpg:
+                self._send(404, b'{"ok":false,"error":"no frame yet"}', "application/json")
+                return
+            self.send_response(200)
+            self._cors()
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(jpg)))
+            self.end_headers()
+            self.wfile.write(jpg)
+            return
+
+        if path in ("/api/cam/latest", "/api/esp/latest"):
+            esp = (q.get("esp") or q.get("esp_base") or [None])[0]
+            if CAM_HUB is None:
+                self._send(503, b'{"ok":false,"error":"cam hub missing"}', "application/json")
+                return
+            CAM_HUB.ensure(esp or DEFAULT_ESP)
+            # Prefer annotated frame while following
+            jpg = None
+            if PERSON_FOLLOWER is not None:
+                st = PERSON_FOLLOWER.status()
+                if st.get("running"):
+                    jpg = PERSON_FOLLOWER.annotated_jpeg()
+            if not jpg:
+                jpg = CAM_HUB.latest_jpeg()
+            if not jpg:
+                err = CAM_HUB.status().get("error") or "no frame"
+                self._send(
+                    503,
+                    json.dumps({"ok": False, "error": err}).encode("utf-8"),
+                    "application/json",
+                )
+                return
+            self._send(200, jpg, "image/jpeg")
+            return
+
+        if path in ("/api/esp/stream", "/api/cam/stream", "/api/cam/mjpeg"):
+            esp = (q.get("esp") or q.get("esp_base") or [None])[0]
+            if CAM_HUB is None:
+                # Legacy direct proxy fallback
+                url = _esp_stream_url(esp)
+                try:
+                    req = urllib.request.Request(
+                        url,
+                        headers={
+                            "User-Agent": _UA,
+                            "Accept": "*/*",
+                            "Connection": "close",
+                            "Accept-Encoding": "identity",
+                        },
+                    )
+                    upstream = urllib.request.urlopen(req, timeout=8)
+                except Exception as exc:
+                    msg = json.dumps({"ok": False, "error": str(exc), "url": url}).encode("utf-8")
+                    self._send(502, msg, "application/json")
+                    return
+                try:
+                    ctype = upstream.headers.get(
+                        "Content-Type", "multipart/x-mixed-replace; boundary=frame"
+                    )
+                    self.send_response(200)
+                    self._cors()
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    while True:
+                        chunk = upstream.read(65536)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        try:
+                            self.wfile.flush()
+                        except Exception:
+                            break
+                finally:
+                    try:
+                        upstream.close()
+                    except Exception:
+                        pass
+                return
+
+            # Shared hub MJPEG — never opens a second ESP :82 socket
+            CAM_HUB.ensure(esp or DEFAULT_ESP)
+            force_annot = (q.get("annotate") or q.get("nav") or ["0"])[0] in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            )
+            boundary = b"frame"
+            self.send_response(200)
+            self._cors()
+            self.send_header(
+                "Content-Type", "multipart/x-mixed-replace; boundary=" + boundary.decode()
+            )
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.send_header("Connection", "close")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            seq = -1
+            annot_seq = -1
+            try:
                 while True:
-                    chunk = upstream.read(65536)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
+                    # While nav/follow is ON, push annotated frames (all boxes + HUD)
+                    jpg = None
+                    following = False
+                    if PERSON_FOLLOWER is not None:
+                        st = PERSON_FOLLOWER.status()
+                        following = bool(st.get("running"))
+                    if following or force_annot:
+                        if PERSON_FOLLOWER is not None and following:
+                            # Wait for a fresh annotated frame while nav is live
+                            jpg, annot_seq = PERSON_FOLLOWER.wait_annotated(
+                                timeout=0.85, after_seq=annot_seq
+                            )
+                        elif PERSON_FOLLOWER is not None:
+                            # annotate=1 but nav not running yet — never block 0.85s
+                            jpg = PERSON_FOLLOWER.annotated_jpeg()
+                            if jpg is not None:
+                                annot_seq = int(st.get("annot_seq") or annot_seq)
+                        if jpg is None and CAM_HUB is not None:
+                            jpg, seq = CAM_HUB.wait_jpeg(timeout=0.4, after_seq=seq)
+                    else:
+                        jpg, seq = CAM_HUB.wait_jpeg(timeout=1.0, after_seq=seq)
+                    if not jpg:
+                        continue
+                    header = (
+                        b"--" + boundary + b"\r\n"
+                        b"Content-Type: image/jpeg\r\n"
+                        b"Content-Length: " + str(len(jpg)).encode() + b"\r\n"
+                        b"Cache-Control: no-store\r\n\r\n"
+                    )
+                    self.wfile.write(header)
+                    self.wfile.write(jpg)
+                    self.wfile.write(b"\r\n")
                     try:
                         self.wfile.flush()
                     except Exception:
@@ -1441,11 +1661,6 @@ class TraceHandler(SimpleHTTPRequestHandler):
                 pass
             except Exception:
                 pass
-            finally:
-                try:
-                    upstream.close()
-                except Exception:
-                    pass
             return
 
         if path in ("/api/esp/capture", "/api/cam/capture"):
@@ -1486,6 +1701,64 @@ class TraceHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/talk":
             result = handle_talk(str(data.get("text") or data.get("message") or ""))
+            if result.get("ok") and (
+                data.get("speak")
+                or str(data.get("say_reply") or "").lower() in ("1", "true", "yes")
+            ):
+                try:
+                    handle_speak(str(result.get("reply") or ""), DEFAULT_ESP)
+                except Exception:
+                    pass
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 400)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/listen/start", "/api/listen/trigger"):
+            if COVER_LISTEN is None:
+                result = {"ok": False, "error": "listen module missing"}
+            else:
+                result = COVER_LISTEN.trigger_manual()
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 400)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/listen/audio", "/api/listen/upload"):
+            if COVER_LISTEN is None:
+                result = {"ok": False, "error": "listen module missing"}
+            else:
+                ctype_in = (
+                    self.headers.get("Content-Type") or "application/octet-stream"
+                ).split(";")[0].strip()
+                audio = b""
+                if raw and not (raw[:1] in (b"{", b"[") and "json" in ctype_in):
+                    audio = raw
+                elif isinstance(data.get("audio_b64"), str):
+                    import base64
+
+                    try:
+                        audio = base64.b64decode(data["audio_b64"])
+                        ctype_in = str(data.get("mime") or "audio/webm")
+                    except Exception:
+                        audio = b""
+                result = COVER_LISTEN.submit_audio(audio, ctype_in)
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 400)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/music/play", "/api/music"):
+            if YT_PLAYER is None:
+                result = {"ok": False, "error": "music module missing (yt-dlp?)"}
+            else:
+                q = str(
+                    data.get("query")
+                    or data.get("q")
+                    or data.get("song")
+                    or data.get("text")
+                    or ""
+                ).strip()
+                if not q and parse_music_command:
+                    q = parse_music_command(str(data.get("command") or "")) or ""
+                result = YT_PLAYER.play_async(q)
             code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 400)
             self._send(code, body, ctype)
             return
@@ -1527,6 +1800,80 @@ class TraceHandler(SimpleHTTPRequestHandler):
             self._send(code, body, ctype)
             return
 
+        if path in ("/api/follow/start", "/api/follow/on"):
+            if PERSON_FOLLOWER is None:
+                result = {"ok": False, "error": "follow module missing"}
+            else:
+                esp = data.get("esp") or data.get("esp_base") or DEFAULT_ESP
+                tid = data.get("target_human")
+                if tid is None:
+                    tid = data.get("target_id") or data.get("human") or data.get("target") or data.get("person")
+                if tid is None and (data.get("text") or data.get("command")):
+                    try:
+                        from follow_person import parse_human_command
+
+                        tid = parse_human_command(str(data.get("text") or data.get("command")))
+                    except Exception:
+                        tid = None
+                try:
+                    kw: Dict[str, Any] = {
+                        "esp_base": str(esp),
+                        "forward_fast": data.get("forward_fast"),
+                        "turn_max": data.get("turn_max"),
+                        "mirror_x": data.get("mirror_x"),
+                    }
+                    if tid is not None:
+                        kw["target_human"] = int(tid)
+                    result = PERSON_FOLLOWER.start(**kw)
+                except Exception as exc:
+                    result = {"ok": False, "error": str(exc)}
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/follow/target", "/api/follow/human"):
+            if PERSON_FOLLOWER is None:
+                result = {"ok": False, "error": "follow module missing"}
+            else:
+                tid = data.get("target_human")
+                if tid is None:
+                    tid = data.get("target_id") or data.get("human") or data.get("target") or data.get("person")
+                if tid is None and (data.get("text") or data.get("command")):
+                    try:
+                        from follow_person import parse_human_command
+
+                        tid = parse_human_command(str(data.get("text") or data.get("command")))
+                    except Exception:
+                        tid = None
+                try:
+                    if tid is None:
+                        result = {"ok": False, "error": "need target_human / human N"}
+                    else:
+                        if not PERSON_FOLLOWER.status().get("running"):
+                            PERSON_FOLLOWER.start(
+                                esp_base=str(data.get("esp") or data.get("esp_base") or DEFAULT_ESP),
+                                target_human=int(tid),
+                            )
+                        result = PERSON_FOLLOWER.set_target_human(int(tid))
+                except Exception as exc:
+                    result = {"ok": False, "error": str(exc)}
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/follow/stop", "/api/follow/off"):
+            if PERSON_FOLLOWER is None:
+                result = {"ok": False, "error": "follow module missing"}
+            else:
+                reason = str(data.get("reason") or "ui stop")
+                try:
+                    result = PERSON_FOLLOWER.stop(reason)
+                except Exception as exc:
+                    result = {"ok": False, "error": str(exc)}
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
         self._send(404, b'{"ok":false,"error":"not found"}', "application/json")
 
 
@@ -1551,8 +1898,44 @@ def main() -> int:
         flush=True,
     )
     print(f"ESP proxy             GET  /api/esp/stream  /api/esp/drive  /api/esp/status", flush=True)
+    print(
+        f"Person follow         POST /api/follow/start|stop  GET /api/follow/status|frame  "
+        f"({'ready' if PERSON_FOLLOWER else 'UNAVAILABLE'})",
+        flush=True,
+    )
+    print(
+        f"Cam hub               GET  /api/esp/stream (shared · one ESP :82 socket)  "
+        f"({'ready' if CAM_HUB else 'UNAVAILABLE'})",
+        flush=True,
+    )
     print(f"ESP default           {DEFAULT_ESP}", flush=True)
     print(f"SFX dir               {SFX_DIR}", flush=True)
+    if CAM_HUB is not None:
+        try:
+            CAM_HUB.ensure(DEFAULT_ESP)
+            print(f"Cam hub warming       {DEFAULT_ESP}:82/stream", flush=True)
+        except Exception as exc:
+            print(f"Cam hub warm failed   {exc}", flush=True)
+    if COVER_LISTEN is not None:
+        try:
+            COVER_LISTEN.attach(handle_speak, PERSON_FOLLOWER)
+            COVER_LISTEN.start(DEFAULT_ESP)
+            print(
+                "Cover-listen          cover HC-SR04 → Listening! → Whisper/Groq → TTS",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"Cover-listen failed   {exc}", flush=True)
+    if YT_PLAYER is not None:
+        try:
+            YT_PLAYER.attach(
+                esp=DEFAULT_ESP,
+                speak_fn=handle_speak,
+                play_wav_fn=push_wav_to_esp,
+            )
+            print("Music                 POST /api/music/play  (yt-dlp → amp)", flush=True)
+        except Exception as exc:
+            print(f"Music attach failed   {exc}", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

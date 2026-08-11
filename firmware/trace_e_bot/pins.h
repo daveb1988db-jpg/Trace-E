@@ -12,7 +12,8 @@ static const int PIN_I2S_DOUT = 14;
 // --- Mic (GY-MAX4466 / MAX4466) ---
 static const int PIN_MIC = 3;
 
-// --- Ultrasonic (HC-SR04) ---
+// --- Ultrasonic (HC-SR04) — front bumper proximity ---
+// TRIG → GPIO1, ECHO → GPIO2 (5V VCC / GND shared; ECHO via divider if needed)
 static const int PIN_TRIG = 1;
 static const int PIN_ECHO = 2;
 

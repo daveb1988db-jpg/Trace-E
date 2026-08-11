@@ -46,7 +46,7 @@
 #endif
 
 static const char *MODEL_ID = "trace-e";
-static const char *MIC_FW_TAG = "trace-e-amp-tts-3";
+static const char *MIC_FW_TAG = "trace-e-mic-wav-1";
 static const char *FW_NAME = "Trace-E Bot";
 
 static const unsigned long DRIVE_FAILSAFE_MS = 450;
@@ -71,7 +71,153 @@ static void corsHeaders(WebServer &s) {
   s.sendHeader("Cache-Control", "no-store");
 }
 
+/** Last HC-SR04 sample (cached so status polls don't hammer pulseIn). */
+static float g_usCm = -1.0f;
+static unsigned long g_usMs = 0;
+
+/** HC-SR04 range in cm; -1 if no echo / wiring missing. Short timeout (~12ms ≈ 2m). */
+static float readUltrasonicCm() {
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG, LOW);
+  // 12000us ≈ 2m round-trip; keeps /api/status + drive path snappy
+  unsigned long us = pulseIn(PIN_ECHO, HIGH, 12000UL);
+  if (us == 0) return -1.0f;
+  float cm = us / 58.0f;
+  if (cm < 2.0f || cm > 400.0f) return -1.0f;
+  return cm;
+}
+
+static float ultrasonicCachedCm() {
+  unsigned long now = millis();
+  if (now - g_usMs >= 60UL || g_usMs == 0) {
+    float v = readUltrasonicCm();
+    if (v > 0) {
+      g_usCm = v;
+      g_usMs = now;
+    } else if (now - g_usMs > 250UL) {
+      g_usCm = -1.0f;
+      g_usMs = now;
+    }
+  }
+  return g_usCm;
+}
+
+/** MAX4466 peak deviation from mid-scale (0..1-ish). */
+static float readMicLevel() {
+  const int mid = 2048;
+  int peak = 0;
+  for (int i = 0; i < 48; i++) {
+    int v = analogRead(PIN_MIC);
+    int d = v - mid;
+    if (d < 0) d = -d;
+    if (d > peak) peak = d;
+  }
+  float lvl = peak / 1800.0f;
+  if (lvl < 0.0f) lvl = 0.0f;
+  if (lvl > 1.0f) lvl = 1.0f;
+  return lvl;
+}
+
+/** Record Trace's onboard MAX4466 to a mono WAV for brain STT (cover-to-talk). */
+static void handleMicWav(WebServer &s) {
+  corsHeaders(s);
+  // Keep short — ESP RAM + Whisper latency for a kids toy
+  float secs = 3.0f;
+  if (s.hasArg("seconds")) {
+    secs = s.arg("seconds").toFloat();
+  }
+  if (secs < 1.0f) secs = 1.0f;
+  if (secs > 4.0f) secs = 4.0f;
+  const int sr = 8000;
+  const int n = (int)(secs * sr);
+  size_t bytes = (size_t)n * 2u;
+  int16_t *pcm = (int16_t *)ps_malloc(bytes);
+  if (!pcm) {
+    pcm = (int16_t *)malloc(bytes);
+  }
+  if (!pcm) {
+    s.send(500, "application/json", "{\"ok\":false,\"error\":\"oom\"}");
+    return;
+  }
+
+  // Coast motors while recording so drive PWM noise is quieter
+  motorsCoast();
+  g_left = 0;
+  g_right = 0;
+
+  analogReadResolution(12);
+  const uint32_t periodUs = 1000000UL / (uint32_t)sr;
+  const int mid = 2048;
+  for (int i = 0; i < n; i++) {
+    uint32_t t0 = micros();
+    int v = analogRead(PIN_MIC);
+    int centered = (v - mid) * 16;  // boost quiet MAX4466 into int16 range
+    if (centered > 32767) centered = 32767;
+    if (centered < -32768) centered = -32768;
+    pcm[i] = (int16_t)centered;
+    while ((micros() - t0) < periodUs) {
+      // spin
+    }
+  }
+
+  // Build WAV in one buffer (header + pcm)
+  const size_t wavBytes = 44u + bytes;
+  uint8_t *wav = (uint8_t *)ps_malloc(wavBytes);
+  if (!wav) {
+    wav = (uint8_t *)malloc(wavBytes);
+  }
+  if (!wav) {
+    free(pcm);
+    s.send(500, "application/json", "{\"ok\":false,\"error\":\"oom wav\"}");
+    return;
+  }
+  auto w32 = [&](size_t off, uint32_t v) {
+    wav[off] = (uint8_t)(v & 0xff);
+    wav[off + 1] = (uint8_t)((v >> 8) & 0xff);
+    wav[off + 2] = (uint8_t)((v >> 16) & 0xff);
+    wav[off + 3] = (uint8_t)((v >> 24) & 0xff);
+  };
+  auto w16 = [&](size_t off, uint16_t v) {
+    wav[off] = (uint8_t)(v & 0xff);
+    wav[off + 1] = (uint8_t)((v >> 8) & 0xff);
+  };
+  memcpy(wav, "RIFF", 4);
+  w32(4, 36u + (uint32_t)bytes);
+  memcpy(wav + 8, "WAVEfmt ", 8);
+  w32(16, 16);
+  w16(20, 1);   // PCM
+  w16(22, 1);   // mono
+  w32(24, (uint32_t)sr);
+  w32(28, (uint32_t)sr * 2u);
+  w16(32, 2);
+  w16(34, 16);
+  memcpy(wav + 36, "data", 4);
+  w32(40, (uint32_t)bytes);
+  memcpy(wav + 44, pcm, bytes);
+  free(pcm);
+
+  s.sendHeader("Content-Disposition", "inline; filename=\"trace_mic.wav\"");
+  s.sendHeader("Cache-Control", "no-store");
+  s.setContentLength(wavBytes);
+  s.send(200, "audio/wav", "");
+  WiFiClient cl = s.client();
+  size_t off = 0;
+  while (off < wavBytes && cl.connected()) {
+    size_t chunk = wavBytes - off;
+    if (chunk > 1024) chunk = 1024;
+    size_t n = cl.write(wav + off, chunk);
+    if (n == 0) break;
+    off += n;
+  }
+  free(wav);
+}
+
 static String statusJson() {
+  float usCm = ultrasonicCachedCm();
+  float micLvl = readMicLevel();
   String ip = g_wifiOk ? WiFi.localIP().toString() : String("");
   String body = "{";
   body += "\"ok\":true,";
@@ -117,7 +263,31 @@ static String statusJson() {
   body += "\"volume\":";
   body += String(ampVolumeGet());
   body += ",";
-  body += "\"amp\":true";
+  body += "\"amp\":true,";
+  body += "\"us_trig\":";
+  body += String(PIN_TRIG);
+  body += ",";
+  body += "\"us_echo\":";
+  body += String(PIN_ECHO);
+  body += ",";
+  if (usCm > 0) {
+    body += "\"ultrasonic_cm\":";
+    body += String(usCm, 1);
+    body += ",";
+    body += "\"distance_cm\":";
+    body += String(usCm, 1);
+    body += ",";
+  } else {
+    body += "\"ultrasonic_cm\":null,";
+    body += "\"distance_cm\":null,";
+  }
+  body += "\"mic_level\":";
+  body += String(micLvl, 3);
+  body += ",";
+  body += "\"mic_peak\":";
+  body += String(micLvl, 3);
+  body += ",";
+  body += "\"sensors\":[\"camera\",\"ultrasonic\",\"mic\"]";
   body += "}";
   return body;
 }
@@ -283,9 +453,58 @@ static bool initCamera() {
     // Freenove FPC on Trace desk mounts upside-down — sensor vflip for upright MJPEG
     s->set_vflip(s, 1);
     s->set_hmirror(s, 0);
+    // Indoor / short-robot AE boost — prevents stuck near-black frames
+    s->set_brightness(s, 1);
+    s->set_contrast(s, 1);
+    s->set_saturation(s, 0);
+    s->set_whitebal(s, 1);
+    s->set_awb_gain(s, 1);
+    s->set_exposure_ctrl(s, 1);
+    s->set_aec2(s, 1);
+    s->set_ae_level(s, 1);
+    s->set_gain_ctrl(s, 1);
+    s->set_agc_gain(s, 0);
+    s->set_gainceiling(s, (gainceiling_t)6);
+    s->set_bpc(s, 1);
+    s->set_wpc(s, 1);
+    s->set_lenc(s, 1);
   }
   Serial.println("Camera OK");
   return true;
+}
+
+static void handleCameraQuality(WebServer &s) {
+  corsHeaders(s);
+  if (!g_camOk) {
+    s.send(503, "application/json", "{\"ok\":false,\"error\":\"camera not ready\"}");
+    return;
+  }
+  sensor_t *sens = esp_camera_sensor_get();
+  if (!sens) {
+    s.send(503, "application/json", "{\"ok\":false,\"error\":\"no sensor\"}");
+    return;
+  }
+  int bright = s.hasArg("brightness") ? s.arg("brightness").toInt() : 1;
+  int ae = s.hasArg("ae_level") ? s.arg("ae_level").toInt() : 1;
+  int vflip = s.hasArg("vflip") ? s.arg("vflip").toInt() : -1;
+  int hmirror = s.hasArg("hmirror") ? s.arg("hmirror").toInt() : -1;
+  if (bright < -2) bright = -2;
+  if (bright > 2) bright = 2;
+  if (ae < -2) ae = -2;
+  if (ae > 2) ae = 2;
+  sens->set_brightness(sens, bright);
+  sens->set_ae_level(sens, ae);
+  sens->set_exposure_ctrl(sens, 1);
+  sens->set_aec2(sens, 1);
+  sens->set_gain_ctrl(sens, 1);
+  sens->set_gainceiling(sens, (gainceiling_t)6);
+  if (vflip >= 0) sens->set_vflip(sens, vflip ? 1 : 0);
+  if (hmirror >= 0) sens->set_hmirror(sens, hmirror ? 1 : 0);
+  char buf[160];
+  snprintf(buf, sizeof(buf),
+           "{\"ok\":true,\"brightness\":%d,\"ae_level\":%d,\"vflip\":%d,\"hmirror\":%d}",
+           bright, ae, vflip, hmirror);
+  s.send(200, "application/json", buf);
 }
 
 /** Dedicated :82 MJPEG — drop dead clients fast so accept() isn't wedged. */
@@ -431,7 +650,10 @@ void setup() {
   server.on("/api/status", HTTP_OPTIONS, []() { handleOptions(server); });
   server.on("/capture", HTTP_GET, []() { handleCapture(server); });
   server.on("/api/capture", HTTP_GET, []() { handleCapture(server); });
+  server.on("/api/camera_quality", HTTP_GET, []() { handleCameraQuality(server); });
+  server.on("/api/camera_orient", HTTP_GET, []() { handleCameraQuality(server); });
   server.on("/api/reboot", HTTP_GET, []() { handleReboot(server); });
+  server.on("/api/mic_wav", HTTP_GET, []() { handleMicWav(server); });
   server.begin();
 
   driveSrv.on("/api/drive", HTTP_GET, []() { handleDrive(driveSrv); });
@@ -441,7 +663,11 @@ void setup() {
   driveSrv.on("/api/status", HTTP_OPTIONS, []() { handleOptions(driveSrv); });
   driveSrv.on("/capture", HTTP_GET, []() { handleCapture(driveSrv); });
   driveSrv.on("/api/capture", HTTP_GET, []() { handleCapture(driveSrv); });
+  driveSrv.on("/api/camera_quality", HTTP_GET, []() { handleCameraQuality(driveSrv); });
+  driveSrv.on("/api/camera_orient", HTTP_GET, []() { handleCameraQuality(driveSrv); });
   driveSrv.on("/api/reboot", HTTP_GET, []() { handleReboot(driveSrv); });
+  driveSrv.on("/api/mic_wav", HTTP_GET, []() { handleMicWav(driveSrv); });
+  driveSrv.on("/api/mic_wav", HTTP_OPTIONS, []() { handleOptions(driveSrv); });
   ampRegisterRoutes(driveSrv);
   driveSrv.begin();
 
@@ -450,7 +676,7 @@ void setup() {
   xTaskCreatePinnedToCore(streamTask, "mjpeg82", 10240, nullptr, 2, nullptr, 0);
 
   Serial.println("HTTP :80 /api/status /capture");
-  Serial.println("Drive :8765 /api/drive /capture /api/reboot");
+  Serial.println("Drive :8765 /api/drive /capture /api/reboot /api/mic_wav");
   Serial.println("Amp   :8765 /api/play_wav /api/play_url /api/stop_audio /api/volume");
   Serial.println("Cam   :82/stream");
   if (g_wifiOk) {

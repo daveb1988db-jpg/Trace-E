@@ -17,7 +17,14 @@
 
 # TTS / local caches
 desktop/_tts_cache/
+desktop/_yt_cache/
 desktop/_cam_debug/
+desktop/_cam_*.jpg
+desktop/_yolo_debug.jpg
+desktop/_speak_boot.log*
+desktop/_speak_boot.log*.err
+desktop/speak_server.*.log
+logs/
 _tts_page.html
 **/__pycache__/
 *.py[cod]
@@ -25,8 +32,15 @@ _tts_page.html
 .Python
 *.egg-info/
 .venv/
+.venv-nav/
 venv/
 env/
+*.pt
+yolov8*.pt
+
+# Script / install artifacts
+scripts/_*_out.txt
+C?UsersBartl/
 
 # Arduino / ESP / native build artifacts
 **/build/
