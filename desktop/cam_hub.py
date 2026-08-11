@@ -121,8 +121,10 @@ class CamHub:
     def _run(self) -> None:
         fps_t0 = time.perf_counter()
         fps_n = 0
-        stream_failures = 0
+        stream_failures = 3
         last_capture = 0.0
+        last_jpg = None
+        last_change = 0.0
         while not self._stop.is_set():
             if stream_failures < 3:
                 # Try MJPEG stream first
@@ -168,6 +170,10 @@ class CamHub:
                         del buf[: eoi + 2]
                         if len(jpg) < 800 or len(jpg) > JPEG_MAX:
                             continue
+                        if jpg == last_jpg:
+                            if time.perf_counter() - last_change > 3.0:
+                                raise ConnectionError("stale stream")
+                            continue
                         arr = np.frombuffer(jpg, dtype=np.uint8)
                         bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
                         with self._cond:
@@ -175,6 +181,8 @@ class CamHub:
                             self._bgr = bgr
                             self._seq += 1
                             self._cond.notify_all()
+                        last_jpg = jpg
+                        last_change = time.perf_counter()
                         fps_n += 1
                         now = time.perf_counter()
                         if now - fps_t0 >= 1.0:
@@ -209,13 +217,19 @@ class CamHub:
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         jpg = resp.read()
                     if 800 <= len(jpg) <= JPEG_MAX:
-                        arr = np.frombuffer(jpg, dtype=np.uint8)
-                        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                        with self._cond:
-                            self._jpeg = jpg
-                            self._bgr = bgr
-                            self._seq += 1
-                            self._cond.notify_all()
+                        if jpg == last_jpg:
+                            if time.perf_counter() - last_change > 3.0:
+                                raise ConnectionError("stale capture")
+                        else:
+                            arr = np.frombuffer(jpg, dtype=np.uint8)
+                            bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                            with self._cond:
+                                self._jpeg = jpg
+                                self._bgr = bgr
+                                self._seq += 1
+                                self._cond.notify_all()
+                            last_jpg = jpg
+                            last_change = time.perf_counter()
                         fps_n += 1
                         now = time.perf_counter()
                         if now - fps_t0 >= 1.0:
@@ -224,7 +238,7 @@ class CamHub:
                             fps_t0 = now
                             fps_n = 0
                     now = time.perf_counter()
-                    sleep = max(0.05, 0.1 - (now - last_capture))
+                    sleep = max(0.3, 0.5 - (now - last_capture))
                     last_capture = now
                     time.sleep(sleep)
                 except Exception as exc:
