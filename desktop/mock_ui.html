@@ -1742,11 +1742,10 @@
     }
 
     function nudgeCamQuality() {
-      // Best-effort: Trace FW ships VGA q12; Peanut-style API if present
       const h = hostOnly(espBase);
       const urls = [
-        'http://' + h + ':8765/api/camera_quality?q=12&framesize=VGA',
-        'http://' + h + '/api/camera_quality?q=12&framesize=VGA',
+        'http://' + h + ':8765/api/camera_quality?brightness=0&ae_level=0&vflip=-1&hmirror=-1',
+        'http://' + h + '/api/camera_quality?brightness=0&ae_level=0&vflip=-1&hmirror=-1',
       ];
       for (const url of urls) {
         fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' }).catch(() => {});
