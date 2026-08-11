@@ -1195,10 +1195,7 @@
 
     const params = new URLSearchParams(location.search);
     const BRAIN = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '');
-    const storedEsp = localStorage.getItem('trace_e_esp') || '';
-    const ESP_DEFAULT = params.get('esp')
-      || (storedEsp && !storedEsp.includes('192.168.1.105') ? storedEsp : '')
-      || 'http://192.168.1.102';
+    const ESP_DEFAULT = params.get('esp') || 'http://192.168.1.102';
     let espBase = ESP_DEFAULT.replace(/\/$/, '');
     let lastLR = [0, 0];
     let driveOk = false;
