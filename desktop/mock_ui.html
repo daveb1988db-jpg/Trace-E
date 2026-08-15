@@ -931,7 +931,9 @@
   });
   applyLights();
 
-  let snapBack = localStorage.getItem('trace_e_snapback') !== '0';
+  // Default OFF: the opposite-pulse launch fights a held analog stick. Only on
+  // if the user explicitly turned it on for WASD-style taps.
+  let snapBack = localStorage.getItem('trace_e_snapback') === '1';
   let snapPctL = clampPct(localStorage.getItem('trace_e_snap_l'), 25);
   let snapPctR = clampPct(localStorage.getItem('trace_e_snap_r'), 25);
 
@@ -1189,7 +1191,13 @@
   // "release only when both are zero" still let a stick dip kill the rack while
   // RT stayed held — that fired firmware snapback and felt like cutout + lag.
   const PAD_RELEASE_MS = 140;
+  // A held stick emits no new value, so a change-only sender goes completely
+  // silent while you are still asking for full throttle. The robot then hits
+  // its ~1.2s failsafe and cuts power mid-corner. Repeat the held command until
+  // the axes really return to zero — nothing on the wire when parked.
+  const PAD_KEEPALIVE_MS = 200;
   let padOn = false, padRaf = null, padLastSent = '', padSendTs = 0, padTrailing = null;
+  let padKeepTimer = null;
   let padHeldSteer = 0, padHeldDrv = 0;
   let padSteerRelTimer = null, padDrvRelTimer = null;
   const padPrevBtn = {};
@@ -1213,6 +1221,18 @@
       if (pads[i] && pads[i].connected) return pads[i];
     }
     return null;
+  }
+  function padStartKeepAlive() {
+    if (padKeepTimer) return;
+    padKeepTimer = setInterval(() => {
+      if (padHeldSteer === 0 && padHeldDrv === 0) return;
+      if (performance.now() - padSendTs < PAD_KEEPALIVE_MS) return;
+      padLastSent = '';   // defeat the change filter: same value, new datagram
+      padFlushHeld();
+    }, 50);
+  }
+  function padStopKeepAlive() {
+    if (padKeepTimer) { clearInterval(padKeepTimer); padKeepTimer = null; }
   }
   function padClearAxisTimers() {
     if (padSteerRelTimer) { clearTimeout(padSteerRelTimer); padSteerRelTimer = null; }
@@ -1292,8 +1312,10 @@
     padOn = !!on;
     const el = $('wideLink');
     if (padOn && !padRaf) padRaf = requestAnimationFrame(padLoop);
-    if (!padOn && padRaf) {
-      cancelAnimationFrame(padRaf); padRaf = null;
+    if (padOn) padStartKeepAlive();
+    if (!padOn) {
+      if (padRaf) { cancelAnimationFrame(padRaf); padRaf = null; }
+      padStopKeepAlive();
       padLastSent = '';
       padClearAxisTimers();
       padHeldSteer = 0; padHeldDrv = 0;

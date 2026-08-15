@@ -64,6 +64,8 @@ jobs:
             **[⬇ Download Trace-E.apk](https://github.com/daveb1988db-jpg/Trace-E/releases/latest/download/Trace-E.apk)** — sideload on the tablet (allow "install unknown apps").
 
             ### New in this build
+            - 🎮 **Gamepad cut-out fixed** — holding a stick or trigger steady sends no new value, so the app used to go silent mid-corner and the robot's failsafe cut the motors. The pad now repeats the held command, so throttle and steering stay live until you actually let go.
+            - 📷 **Camera backs off when nobody's watching** — the video pull parks itself instead of hogging the robot's radio, leaving more air time for control.
             - 🕹️ **WIDE DRIVE** — full-screen landscape cockpit for tablets. Big camera + an analog thumb-stick to drive.
             - 🎚️ **Per-side steering sensitivity** — separate LEFT and RIGHT sliders so each turn direction is as gentle or sharp as you like (live, no reflash).
             - ↩️ **Live per-side snap-back** sliders for the auto-recentre burst.
