@@ -1263,11 +1263,28 @@ def _live_host(esp_base: Optional[str] = None) -> str:
     firing drive datagrams into the void. Falls back to the override only when
     discovery has nothing recent. No network probe here — safe for the 90ms
     drive hot path."""
+    global _ESP_LIVE, _ESP_LIVE_TS
     now = time.time()
     if _ESP_LIVE and (now - _ESP_LIVE_TS) < 60.0:
         h = urllib.parse.urlparse(_ESP_LIVE).hostname
         if h:
             return h
+    # The cam hub holds a live socket to the real ESP and keeps pulling frames,
+    # so its IP is ground truth even when the tablet app keeps sending a stale
+    # default (e.g. .108 after the DHCP lease moved to .104). Trust it whenever
+    # a frame arrived recently — a cheap dict read, safe for the 90ms hot path.
+    if CAM_HUB is not None:
+        try:
+            st = CAM_HUB.status()
+            age = st.get("age_ms")
+            if st.get("has_frame") and age is not None and age < 8000:
+                h = urllib.parse.urlparse(st.get("esp") or "").hostname
+                if h:
+                    _ESP_LIVE = f"http://{h}"
+                    _ESP_LIVE_TS = now
+                    return h
+        except Exception:
+            pass
     return _esp_host(esp_base)
 
 
@@ -1512,7 +1529,7 @@ def proxy_esp_headlights(
     esp_base: Optional[str] = None,
 ) -> Tuple[int, bytes, str]:
     """Proxy pretend headlights on GPIO38."""
-    h = _esp_host(esp_base)
+    h = _live_host(esp_base)  # self-heal against stale app ESP IP (DHCP move)
     if brightness is not None:
         q = f"?brightness={max(0, min(100, int(brightness)))}"
     else:
