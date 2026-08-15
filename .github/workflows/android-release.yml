@@ -1,0 +1,72 @@
+name: Build & Release APK
+
+# Tag a release (git tag v0.2.0 && git push --tags) and this builds the APK on
+# a cloud runner (no local Android SDK needed) and attaches it to the Release.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android/TraceE
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build release APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Stage APK (versioned + stable names)
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Trace-E-${{ github.ref_name }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Trace-E.apk"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trace-E-APK
+          path: dist/*.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Trace-E Android ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          # Trace-E.apk is a stable filename so the README "latest" link never rots.
+          files: |
+            dist/Trace-E-${{ github.ref_name }}.apk
+            dist/Trace-E.apk
+          body: |
+            ## 📱 Trace-E kids-tablet control app — ${{ github.ref_name }}
+
+            **[⬇ Download Trace-E.apk](https://github.com/daveb1988db-jpg/Trace-E/releases/latest/download/Trace-E.apk)** — sideload on the tablet (allow "install unknown apps").
+
+            ### New in this build
+            - 🕹️ **WIDE DRIVE** — full-screen landscape cockpit for tablets. Big camera + an analog thumb-stick to drive.
+            - 🎚️ **Per-side steering sensitivity** — separate LEFT and RIGHT sliders so each turn direction is as gentle or sharp as you like (live, no reflash).
+            - ↩️ **Live per-side snap-back** sliders for the auto-recentre burst.
+            - 🚨 **UK "nee-naw" siren** — synthesised on the robot itself (no download, no lag).
+
+            Debug-signed for family sideload (no Play Store).

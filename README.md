@@ -1,5 +1,17 @@
 # Trace-E Bot
 
+## 📱 Download the kids-tablet app (APK)
+
+> **[⬇ Download the latest Trace-E.apk](https://github.com/daveb1988db-jpg/Trace-E/releases/latest/download/Trace-E.apk)**  ·  [All releases](https://github.com/daveb1988db-jpg/Trace-E/releases/latest)
+
+[![Latest APK](https://img.shields.io/github/v/release/daveb1988db-jpg/Trace-E?label=Download%20APK&style=for-the-badge&logo=android&color=2ea44f)](https://github.com/daveb1988db-jpg/Trace-E/releases/latest)
+
+Sideload on the tablet (Settings → allow **install unknown apps** for your browser/file manager), then open **WEB-QUARTERS!**.
+
+**Wide-screen kids cockpit:** tap **🕹️ WIDE DRIVE** to flip into a full-screen landscape view with a big camera and an **analog thumb-stick**. Two **steering-sensitivity sliders (LEFT / RIGHT)** let you dial in how sharp each turn is, live. Also includes live per-side snap-back and a UK "nee-naw" siren.
+
+---
+
 Spiderman Trace-E robot: ESP32 firmware, local **speak_server** brain, desktop HQ UI, and Android mock/control shell.
 
 ## Quick start
@@ -56,7 +68,7 @@ From the repo root:
 python desktop/speak_server.py
 ```
 
-Serves on **http://0.0.0.0:8787** by default:
+Serves on **http://0.0.0.0:8788** by default (LAN-accessible):
 
 | Path | Purpose |
 |------|---------|
@@ -66,12 +78,12 @@ Serves on **http://0.0.0.0:8787** by default:
 | `POST /api/talk` | Talk *to* Trace (chat stub) |
 | `GET /api/health` | Status + which TTS keys are set |
 
-`POST /api/speak` JSON: `{ "text": "...", "engine": "peanut-auto", "esp": "http://192.168.1.104" }`  
+`POST /api/speak` JSON: `{ "text": "...", "engine": "peanut-auto", "esp": "http://192.168.1.108" }`  
 Response includes `engine` used (e.g. `peanut-ana/edge-tts`, `groq/hannah`, `gemini/Kore`).
 
 Other optional env:
 
-- `TRACE_E_ESP_BASE` — ESP base URL (default `http://192.168.1.104`)
+- `TRACE_E_ESP_BASE` — ESP base URL (default `http://192.168.1.108`)
 - `TRACE_E_SPEAK_PORT` — server port (default `8787`)
 - `TRACE_E_CHIRPS` — default `off`
 
@@ -79,8 +91,8 @@ Other optional env:
 
 With speak_server running:
 
-- **Desktop HQ:** [http://127.0.0.1:8787/](http://127.0.0.1:8787/)
-- **Android portrait mock:** [http://127.0.0.1:8787/android_mock.html](http://127.0.0.1:8787/android_mock.html)
+- **Desktop HQ:** `http://192.168.1.105:8788/`
+- **Android portrait mock:** `http://192.168.1.105:8788/android_mock.html`
 
 Or open the HTML files directly:
 
@@ -95,7 +107,7 @@ python desktop/trace_e_control.py
 
 ### 5. Connect the ESP
 
-1. Put the ESP IP in the UI (**Set ESP**), e.g. `http://192.168.1.104`.
+1. Put the ESP IP in the UI (**Set ESP**), e.g. `http://192.168.1.108`.
 2. Drive with WASD or the stick — motor commands go to the ESP HTTP API.
 3. **Talk through Trace** uses Peanut Ana / Groq / Gemini → WAV → ESP amp (laptop fallback if ESP play fails).
 4. Camera stream (when available): ESP `:82/stream` — use **Flip cam** if the mount is upside-down.
@@ -123,6 +135,16 @@ ros2_ws/          Optional ROS 2 Jazzy Docker person-follow (same math as speak_
 4. **WASD** cancels follow
 
 Needs a live ESP cam on `:82/stream`. Optional ROS Docker: see `ros2_ws/README.md`.
+
+### Occupancy SLAM (Z400 brain)
+
+1. Run `python desktop/speak_server.py`
+2. Open HQ UI → **Map ON**
+3. Trace wanders, sketches a 12 m occupancy grid from PWM odom + cam optical flow + the front HC-SR04
+4. Live map overlay sits on the cam; **Reset** clears the grid; **WASD** pauses explore (keeps mapping)
+5. Say “map on” / “map off” to Talk
+
+No lidar on this chassis — this is a room sketch, not Nav2. Docker: `docker compose --profile slam up` in `ros2_ws`.
 
 ## Secrets
 

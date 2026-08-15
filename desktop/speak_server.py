@@ -11,6 +11,10 @@ Endpoints:
   POST /api/follow/stop
   GET  /api/follow/status
   GET  /api/follow/frame  -> Annotated JPEG overlay
+  POST /api/slam/start    -> Occupancy SLAM (odom + cam flow + ultrasonic)
+  POST /api/slam/stop
+  GET  /api/slam/status
+  GET  /api/slam/map      -> Occupancy JPEG
 
 TTS (Peanut Ana PRIMARY for Ollie):
   1) edge-tts en-US-AnaNeural  (Peanut's working Ana voice)
@@ -31,6 +35,7 @@ import io
 import json
 import os
 import re
+import socket
 import struct
 import sys
 import tempfile
@@ -62,7 +67,9 @@ try:
 except Exception:  # pragma: no cover
     PERSON_FOLLOWER = None  # type: ignore
 try:
-    from cover_listen import COVER_LISTEN
+    from cover_listen import CoverListenService
+
+    COVER_LISTEN: Optional[Any] = CoverListenService()
 except Exception:  # pragma: no cover
     COVER_LISTEN = None  # type: ignore
 try:
@@ -70,6 +77,10 @@ try:
 except Exception:  # pragma: no cover
     YT_PLAYER = None  # type: ignore
     parse_music_command = None  # type: ignore
+try:
+    from slam_mapper import SLAM_MAPPER
+except Exception:  # pragma: no cover
+    SLAM_MAPPER = None  # type: ignore
 
 # Load API keys from Trace-E .env and/or peanut-robot .env (never commit real .env)
 def _load_dotenv_files() -> List[str]:
@@ -117,7 +128,8 @@ SFX_MAP = {
 }
 
 HOST = os.environ.get("TRACE_E_SPEAK_HOST", "0.0.0.0")
-PORT = int(os.environ.get("TRACE_E_SPEAK_PORT", "8787"))
+# LAN default: phone/tablet clients must reach the PC, not loopback.
+PORT = int(os.environ.get("TRACE_E_SPEAK_PORT", "8788"))
 # Chirps default OFF — no laptop/ESP tones unless client sends mode=situational|random
 CHIRPS_DEFAULT = (os.environ.get("TRACE_E_CHIRPS") or "off").strip().lower()
 # Amp-only by default — laptop speakers are opt-in fallback only
@@ -128,8 +140,8 @@ ALLOW_LAPTOP = (os.environ.get("TRACE_E_ALLOW_LAPTOP") or "0").strip().lower() i
     "on",
 )
 DEFAULT_ESP = (
-    os.environ.get("TRACE_E_ESP_BASE")
-    or "http://192.168.1.102"
+    (os.environ.get("TRACE_E_ESP_BASE") or "").strip().strip("'\"")
+    or "http://192.168.1.104"
 ).rstrip("/")
 # Peanut's ESP_BASE_URL may point at a different robot — only used as discover hint
 _PEANUT_ESP_HINT = (
@@ -191,7 +203,7 @@ def _json_bytes(obj: dict, code: int = 200) -> Tuple[int, bytes, str]:
 def discover_esp(preferred: str = DEFAULT_ESP, timeout: float = 0.35, quick: bool = False) -> str:
     preferred = (preferred or DEFAULT_ESP).rstrip("/")
     hosts = []
-    for base in (preferred, DEFAULT_ESP, "http://192.168.1.104", _PEANUT_ESP_HINT, "http://192.168.1.105"):
+    for base in (preferred, DEFAULT_ESP, "http://192.168.1.108", _PEANUT_ESP_HINT, "http://192.168.1.105"):
         if not base:
             continue
         try:
@@ -201,7 +213,7 @@ def discover_esp(preferred: str = DEFAULT_ESP, timeout: float = 0.35, quick: boo
         except Exception:
             pass
     if not quick:
-        for n in (104, 105, 106, 102, 100):
+        for n in (108, 107, 104, 105, 106, 102, 100):
             h = f"192.168.1.{n}"
             if h not in hosts:
                 hosts.append(h)
@@ -221,6 +233,178 @@ def discover_esp(preferred: str = DEFAULT_ESP, timeout: float = 0.35, quick: boo
             except Exception:
                 continue
     return preferred if preferred.startswith("http") else f"http://{preferred}"
+
+
+_ESP_LIVE = ""
+_ESP_LIVE_TS = 0.0
+
+
+def _esp_answers(base: str, timeout: float = 0.6) -> bool:
+    try:
+        h = urllib.parse.urlparse(base if "://" in base else f"http://{base}").hostname
+        if not h:
+            return False
+        req = urllib.request.Request(
+            f"http://{h}:8765/api/status", headers={"Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        return str(data.get("model") or "") in ("trace-e", "peanut", "")
+    except Exception:
+        return False
+
+
+def _resolve_esp(preferred: Optional[str] = None) -> str:
+    """Use the requested ESP if it answers; otherwise find Trace-E on the LAN."""
+    global _ESP_LIVE, _ESP_LIVE_TS
+    now = time.time()
+    if _ESP_LIVE and (now - _ESP_LIVE_TS) < 45.0:
+        return _ESP_LIVE
+    pref = preferred or DEFAULT_ESP
+    if pref and _esp_answers(pref):
+        _ESP_LIVE = pref.rstrip("/")
+        _ESP_LIVE_TS = now
+        return _ESP_LIVE
+    found = discover_esp(pref, timeout=0.6)
+    if found and _esp_answers(found):
+        _ESP_LIVE = found.rstrip("/")
+        _ESP_LIVE_TS = now
+        return _ESP_LIVE
+    for guess in ("http://192.168.1.104", "http://192.168.1.108"):
+        if _esp_answers(guess):
+            _ESP_LIVE = guess
+            _ESP_LIVE_TS = now
+            return _ESP_LIVE
+    return (found or pref or "http://192.168.1.104").rstrip("/")
+
+
+_STEER_TUNE_TS = 0.0
+_STEER_TUNE_LOCK = threading.Lock()
+# UI SNAP BACK: ON = opposite burst. Must not invert (ON means on).
+# Left (A) and right (D) are tuned separately — the rack is not symmetric.
+_SNAPBACK_ON = True
+_STEER_KICK_MS = 180
+_STEER_CENTER_MS_L = 140
+_STEER_CENTER_MS_R = 140
+_STEER_CENTER_PCT_L = 25
+_STEER_CENTER_PCT_R = 25
+
+
+def _clamp_pct(v: object, default: int) -> int:
+    try:
+        return max(0, min(100, int(v)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _clamp_ms(v: object, default: int) -> int:
+    try:
+        return max(0, min(1000, int(v)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _apply_steer_tune(esp_base: Optional[str] = None, force: bool = False) -> None:
+    """Hard A/D kick + optional per-side snap-back. Re-apply after ESP reboot."""
+    global _STEER_TUNE_TS
+    now = time.time()
+    with _STEER_TUNE_LOCK:
+        if not force and now - _STEER_TUNE_TS < 12.0:
+            return
+        _STEER_TUNE_TS = now
+    h = _esp_host(esp_base)
+    if _SNAPBACK_ON:
+        # Legacy center/center_pct first so pre-per-side firmware still tunes;
+        # new firmware reads those, then the _l/_r pair overrides them.
+        avg_ms = (_STEER_CENTER_MS_L + _STEER_CENTER_MS_R) // 2
+        avg_pct = (_STEER_CENTER_PCT_L + _STEER_CENTER_PCT_R) // 2
+        q = (
+            f"kick={_STEER_KICK_MS}&lock=60000&hold=100&snap=1"
+            f"&center={avg_ms}&center_pct={avg_pct}"
+            f"&center_l={_STEER_CENTER_MS_L}&center_r={_STEER_CENTER_MS_R}"
+            f"&center_pct_l={_STEER_CENTER_PCT_L}&center_pct_r={_STEER_CENTER_PCT_R}"
+        )
+    else:
+        q = f"kick={_STEER_KICK_MS}&lock=60000&hold=100&center=0&center_pct=0&snap=0"
+    url = f"http://{h}:8765/api/steer?{q}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            resp.read(256)
+    except Exception:
+        with _STEER_TUNE_LOCK:
+            _STEER_TUNE_TS = 0.0
+
+
+def steer_config() -> dict:
+    return {
+        "ok": True,
+        "snap": _SNAPBACK_ON,
+        "snapback": _SNAPBACK_ON,
+        "kick": _STEER_KICK_MS,
+        "hold": 100,
+        "center_pct_l": _STEER_CENTER_PCT_L,
+        "center_pct_r": _STEER_CENTER_PCT_R,
+        "center_l": _STEER_CENTER_MS_L,
+        "center_r": _STEER_CENTER_MS_R,
+    }
+
+
+def set_steer(
+    *,
+    on: Optional[bool] = None,
+    pct_l: Optional[object] = None,
+    pct_r: Optional[object] = None,
+    ms_l: Optional[object] = None,
+    ms_r: Optional[object] = None,
+    esp_base: Optional[str] = None,
+) -> dict:
+    """Live snap-back tuning. Any subset of fields; unspecified keep their value."""
+    global _SNAPBACK_ON, _STEER_CENTER_PCT_L, _STEER_CENTER_PCT_R
+    global _STEER_CENTER_MS_L, _STEER_CENTER_MS_R
+    if on is not None:
+        _SNAPBACK_ON = bool(on)
+    if pct_l is not None:
+        _STEER_CENTER_PCT_L = _clamp_pct(pct_l, _STEER_CENTER_PCT_L)
+    if pct_r is not None:
+        _STEER_CENTER_PCT_R = _clamp_pct(pct_r, _STEER_CENTER_PCT_R)
+    if ms_l is not None:
+        _STEER_CENTER_MS_L = _clamp_ms(ms_l, _STEER_CENTER_MS_L)
+    if ms_r is not None:
+        _STEER_CENTER_MS_R = _clamp_ms(ms_r, _STEER_CENTER_MS_R)
+    _apply_steer_tune(esp_base, force=True)
+    return steer_config()
+
+
+def set_snapback(on: bool, esp_base: Optional[str] = None) -> dict:
+    return set_steer(on=on, esp_base=esp_base)
+
+
+def proxy_esp_siren(
+    ms: Optional[object] = None,
+    esp_base: Optional[str] = None,
+    mode: Optional[object] = None,
+) -> Tuple[int, bytes, str]:
+    """Siren is synthesised on the ESP — this only kicks it off."""
+    h = _esp_host(esp_base)
+    try:
+        dur = max(200, min(15000, int(ms)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        dur = 3000
+    md = str(mode).strip().lower() if mode is not None else "uk"
+    if md not in ("uk", "wail", "sweep", "us", "0"):
+        md = "uk"
+    url = f"http://{h}:8765/api/siren?ms={dur}&mode={md}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            return int(resp.status), resp.read(), "application/json"
+    except Exception as exc:
+        return (
+            502,
+            json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"),
+            "application/json",
+        )
 
 
 def _http_get(url: str, timeout: float = 25.0) -> Tuple[int, bytes, str]:
@@ -309,10 +493,29 @@ def ensure_wav_16k_mono(src: Path) -> Optional[Path]:
     """Normalize any audio file to 16 kHz mono PCM WAV for ESP amp."""
     if not src or not src.exists():
         return None
+    # Fast path: already lean ESP format
+    if src.suffix.lower() == ".wav":
+        try:
+            with wave.open(str(src), "rb") as w:
+                nch, sw, fr, nframes, _, _ = w.getparams()[:6]
+            if nch == 1 and sw == 2 and fr == 16000 and nframes > 0:
+                return src
+        except Exception:
+            pass
     out = CACHE_DIR / f"{src.stem}_16k.wav"
-    if out.exists() and out.stat().st_size > 44 and src.suffix.lower() == ".wav":
-        # Still re-check rate below if cheap
-        pass
+    if (
+        out.exists()
+        and out.stat().st_size > 44
+        and src.suffix.lower() == ".wav"
+        and out.stat().st_mtime >= src.stat().st_mtime
+    ):
+        try:
+            with wave.open(str(out), "rb") as w:
+                nch, sw, fr, nframes, _, _ = w.getparams()[:6]
+            if nch == 1 and sw == 2 and fr == 16000 and nframes > 0:
+                return out
+        except Exception:
+            pass
     ffmpeg = _ffmpeg_exe()
     if ffmpeg:
         try:
@@ -747,154 +950,215 @@ def play_laptop(wav_path: Path) -> bool:
         return False
 
 
+# Firmware amp.cpp AMP_MAX_WAV = 320 KiB — stay under for play_wav / play_url buffer
+ESP_AMP_MAX_BYTES = 280 * 1024
+
+
 def amplify_wav_inplace(wav_path: Path, gain: float = 2.4) -> Path:
     """Boost PCM so MAX98357A / laptop aren't whisper-quiet after mute era."""
     try:
+        if wav_path.stem.endswith("_loud") and wav_path.is_file():
+            return wav_path
         with wave.open(str(wav_path), "rb") as src:
             nch, sw, fr, nframes, _, _ = src.getparams()[:6]
             frames = src.readframes(nframes)
         if sw != 2 or nframes <= 0:
             return wav_path
-        samples = list(struct.unpack("<" + "h" * (len(frames) // 2), frames))
-        out = []
-        for s in samples:
+        n = len(frames) // 2
+        samples = struct.unpack("<" + "h" * n, frames)
+        out = [0] * n
+        for i, s in enumerate(samples):
             v = int(s * gain)
             if v > 32767:
                 v = 32767
             elif v < -32768:
                 v = -32768
-            out.append(v)
+            out[i] = v
         boosted = wav_path.with_name(wav_path.stem + "_loud.wav")
         with wave.open(str(boosted), "wb") as dst:
             dst.setnchannels(nch)
             dst.setsampwidth(2)
             dst.setframerate(fr)
-            dst.writeframes(struct.pack("<" + "h" * len(out), *out))
+            dst.writeframes(struct.pack("<" + "h" * n, *out))
         return boosted
     except Exception:
         return wav_path
 
 
-def push_wav_to_esp(
-    esp_base: str,
-    wav_path: Path,
-    serve_host: str = HOST,
-    serve_port: int = PORT,
-) -> Tuple[bool, str]:
-    """Push WAV to ESP amp. play_wav first; play_url fallback with real wait/verify."""
-    host = urllib.parse.urlparse(esp_base if "://" in esp_base else f"http://{esp_base}").hostname
-    if not host:
-        return False, "bad esp host"
-    drive = f"http://{host}:8765"
-    errors: List[str] = []
+def _split_wav_for_esp(wav_path: Path, max_bytes: int = ESP_AMP_MAX_BYTES) -> List[Path]:
+    """Chunk oversized WAVs so each piece fits ESP amp RAM."""
+    try:
+        size = wav_path.stat().st_size
+    except OSError:
+        return [wav_path]
+    if size <= max_bytes:
+        return [wav_path]
+    parts: List[Path] = []
+    try:
+        with wave.open(str(wav_path), "rb") as src:
+            nch, sw, fr, nframes, _, _ = src.getparams()[:6]
+            if sw != 2 or nframes <= 0:
+                return [wav_path]
+            frame_bytes = max(1, nch * sw)
+            frames_per = max(1, (max_bytes - 64) // frame_bytes)
+            idx = 0
+            while True:
+                raw = src.readframes(frames_per)
+                if not raw:
+                    break
+                out = CACHE_DIR / f"{wav_path.stem}_p{idx:02d}.wav"
+                with wave.open(str(out), "wb") as dst:
+                    dst.setnchannels(nch)
+                    dst.setsampwidth(sw)
+                    dst.setframerate(fr)
+                    dst.writeframes(raw)
+                parts.append(out)
+                idx += 1
+    except Exception:
+        return [wav_path]
+    return parts or [wav_path]
 
-    # Restore / nudge volume (no-op on older Trace flash without /api/volume)
-    vol_ok = False
-    for q in ("level=100", "v=100", "pct=100", "volume=100"):
+
+def _stage_wav_in_tts_cache(wav_path: Path) -> Path:
+    """ESP play_url only fetches /_tts_cache/... — stage yt/sfx files there."""
+    if wav_path.parent == CACHE_DIR:
+        return wav_path
+    dest = CACHE_DIR / wav_path.name
+    try:
+        if not dest.exists() or dest.stat().st_size != wav_path.stat().st_size:
+            dest.write_bytes(wav_path.read_bytes())
+        return dest
+    except Exception:
+        return wav_path
+
+
+def _wav_duration_s(data: bytes) -> float:
+    return max(0.4, (len(data) - 44) / 32000.0)
+
+
+def _nudge_amp_volume(drive: str) -> bool:
+    """One fast volume nudge — avoid multi-second retry chains before every speak."""
+    for q in ("level=100", "v=100"):
         try:
             req = urllib.request.Request(f"{drive}/api/volume?{q}", method="POST", data=b"")
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
+            with urllib.request.urlopen(req, timeout=0.7) as resp:
                 if 200 <= resp.status < 300:
-                    vol_ok = True
-                    break
+                    return True
         except Exception:
             continue
-    if not vol_ok:
-        for q in ("level=100", "v=100"):
-            try:
-                urllib.request.urlopen(f"{drive}/api/volume?{q}", timeout=1.2).read()
-                vol_ok = True
-                break
-            except Exception:
-                continue
+    return False
 
-    data = wav_path.read_bytes()
+
+def _push_one_wav_to_esp(
+    drive: str,
+    wav_path: Path,
+    *,
+    serve_host: str,
+    serve_port: int,
+) -> Tuple[bool, str]:
+    """Push a single ESP-sized WAV. play_wav first; play_url fallback."""
+    errors: List[str] = []
+    vol_ok = _nudge_amp_volume(drive)
+
+    try:
+        data = wav_path.read_bytes()
+    except OSError as exc:
+        return False, f"read wav: {exc}"
     if len(data) < 44 or data[:4] != b"RIFF":
         return False, "not a wav file"
 
-    # 1) raw play_wav — sync; ESP should ACK after body accepted / play
-    try:
-        req = urllib.request.Request(
-            f"{drive}/api/play_wav",
-            data=data,
-            method="POST",
-            headers={
-                "Content-Type": "audio/wav",
-                "Content-Length": str(len(data)),
-                "Accept": "application/json",
-            },
-        )
-        t0 = time.time()
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            elapsed = time.time() - t0
-            low = body.lower()
-            if (
-                200 <= resp.status < 300
-                and "false" not in low[:80]
-                and '"ok":false' not in low.replace(" ", "")
-            ):
-                return True, f"esp play_wav {len(data)}b ({elapsed:.1f}s) vol={'ok' if vol_ok else 'n/a'}"
-            errors.append(f"play_wav HTTP {resp.status} {body[:160]}")
-    except Exception as exc:
-        err_body = ""
-        if hasattr(exc, "read"):
-            try:
-                err_body = exc.read().decode("utf-8", errors="replace")[:160]
-            except Exception:
-                pass
-        errors.append(f"play_wav:{exc} {err_body}".strip())
+    approx = _wav_duration_s(data)
+    # Old (pre-async) firmware ACKs only after I2S finishes — keep the timeout
+    # duration-based or long TTS clips time out and retry-storm until the flash.
+    play_timeout = min(90.0, max(12.0, approx + 10.0))
+    skip_post = len(data) > ESP_AMP_MAX_BYTES
 
-    # 2) multipart play_wav (peanut-compatible) — some FW only collects upload()
-    try:
-        boundary = "----TraceWav7MA4YWxkTrZu0gW"
-        filename = wav_path.name or "speak.wav"
-        pre = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-            f"Content-Type: audio/wav\r\n\r\n"
-        ).encode("ascii")
-        post = f"\r\n--{boundary}--\r\n".encode("ascii")
-        mp = pre + data + post
-        req = urllib.request.Request(
-            f"{drive}/api/play_wav",
-            data=mp,
-            method="POST",
-            headers={
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-                "Content-Length": str(len(mp)),
-                "Accept": "application/json",
-            },
-        )
-        t0 = time.time()
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            elapsed = time.time() - t0
-            low = body.lower()
-            if (
-                200 <= resp.status < 300
-                and "false" not in low[:80]
-                and '"ok":false' not in low.replace(" ", "")
-            ):
-                return (
-                    True,
-                    f"esp play_wav multipart {len(data)}b ({elapsed:.1f}s)",
-                )
-            errors.append(f"play_wav multipart HTTP {resp.status} {body[:120]}")
-    except Exception as exc:
-        errors.append(f"play_wav multipart:{exc}")
+    if CAM_HUB is not None:
+        try:
+            CAM_HUB.hold_for(0.2)
+        except Exception:
+            pass
 
-    # 3) play_url — ESP pulls from laptop LAN; wait for connection close (= play done on current FW)
-    rel = wav_path.name
+    def _ok_body(status: int, body: str) -> bool:
+        low = body.lower().replace(" ", "")
+        return (
+            200 <= status < 300
+            and '"ok":false' not in low
+            and '"played":false' not in low
+        )
+
+    if not skip_post:
+        try:
+            req = urllib.request.Request(
+                f"{drive}/api/play_wav",
+                data=data,
+                method="POST",
+                headers={
+                    "Content-Type": "audio/wav",
+                    "Content-Length": str(len(data)),
+                    "Accept": "application/json",
+                },
+            )
+            t0 = time.time()
+            with urllib.request.urlopen(req, timeout=play_timeout) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+                elapsed = time.time() - t0
+                if _ok_body(resp.status, body):
+                    return True, (
+                        f"esp play_wav {len(data)}b ({elapsed:.1f}s) "
+                        f"vol={'ok' if vol_ok else 'n/a'}"
+                    )
+                errors.append(f"play_wav HTTP {resp.status} {body[:160]}")
+        except Exception as exc:
+            err_body = ""
+            if hasattr(exc, "read"):
+                try:
+                    err_body = exc.read().decode("utf-8", errors="replace")[:160]
+                except Exception:
+                    pass
+            errors.append(f"play_wav:{exc} {err_body}".strip())
+
+        try:
+            boundary = "----TraceWav7MA4YWxkTrZu0gW"
+            filename = wav_path.name or "speak.wav"
+            crlf = "\r\n"
+            pre = (
+                f"--{boundary}{crlf}"
+                f'Content-Disposition: form-data; name="file"; filename="{filename}"{crlf}'
+                f"Content-Type: audio/wav{crlf}{crlf}"
+            ).encode("ascii")
+            post = f"{crlf}--{boundary}--{crlf}".encode("ascii")
+            mp = pre + data + post
+            req = urllib.request.Request(
+                f"{drive}/api/play_wav",
+                data=mp,
+                method="POST",
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    "Content-Length": str(len(mp)),
+                    "Accept": "application/json",
+                },
+            )
+            t0 = time.time()
+            with urllib.request.urlopen(req, timeout=play_timeout) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+                elapsed = time.time() - t0
+                if _ok_body(resp.status, body):
+                    return True, f"esp play_wav multipart {len(data)}b ({elapsed:.1f}s)"
+                errors.append(f"play_wav multipart HTTP {resp.status} {body[:120]}")
+        except Exception as exc:
+            errors.append(f"play_wav multipart:{exc}")
+
+    staged = _stage_wav_in_tts_cache(wav_path)
+    rel = staged.name
     serve = serve_host
     if serve in ("127.0.0.1", "localhost", "0.0.0.0", "::", "[::]"):
         lan = _guess_lan_ip()
         if lan:
             serve = lan
     public = f"http://{serve}:{serve_port}/_tts_cache/{urllib.parse.quote(rel)}"
-    # Ensure cache is reachable from this machine before asking ESP
     try:
-        with urllib.request.urlopen(public, timeout=3) as probe:
+        with urllib.request.urlopen(public, timeout=2.5) as probe:
             got = probe.read(12)
             if got[:4] != b"RIFF":
                 errors.append(f"cache not serving WAV at {public}")
@@ -902,6 +1166,16 @@ def push_wav_to_esp(
     except Exception as exc:
         errors.append(f"cache unreachable {public}: {exc}")
         return False, "; ".join(errors)
+
+    # ESP buffers the whole WAV in one burst before playing. Give that download
+    # clear radio (shorter, deterministic cam hitch) instead of a frozen feed
+    # fighting the download for the whole song. ~600 KB/s over 2.4GHz.
+    if CAM_HUB is not None:
+        try:
+            dl_s = min(16.0, max(2.0, len(data) / 600_000.0 + 1.5))
+            CAM_HUB.hold_for(dl_s)
+        except Exception:
+            pass
 
     try:
         q = urllib.parse.urlencode({"url": public})
@@ -912,22 +1186,21 @@ def push_wav_to_esp(
             headers={"Accept": "application/json", "Content-Length": "0"},
         )
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=min(60.0, play_timeout + 5.0)) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             elapsed = time.time() - t0
             low = body.lower().replace(" ", "")
-            approx_secs = max(0.6, (len(data) - 44) / (16000.0 * 2.0))
             if resp.status >= 300 or '"ok":false' in low or '"played":false' in low:
-                errors.append(f"play_url HTTP {resp.status} body={body[:120]} elapsed={elapsed:.1f}s")
+                errors.append(
+                    f"play_url HTTP {resp.status} body={body[:120]} elapsed={elapsed:.1f}s"
+                )
             elif '"played":true' in low:
-                # New FW — real play completed before ACK
-                return True, f"esp play_url {public} (played; prior: {errors[0] if errors else 'n/a'})"
-            elif 200 <= resp.status < 300:
-                # Old FW ACKs {"queued":true} then plays — wait so amp finishes before UI returns
-                wait_s = approx_secs + 0.6
-                time.sleep(wait_s)
                 return True, (
-                    f"esp play_url {public} (queued->waited {wait_s:.1f}s after {elapsed:.2f}s ACK; "
+                    f"esp play_url {public} (played; prior: {errors[0] if errors else 'n/a'})"
+                )
+            elif 200 <= resp.status < 300:
+                return True, (
+                    f"esp play_url {public} (queued {elapsed:.2f}s ACK; "
                     f"prior: {errors[0] if errors else 'n/a'})"
                 )
             else:
@@ -935,6 +1208,27 @@ def push_wav_to_esp(
     except Exception as exc:
         errors.append(f"play_url:{exc}")
     return False, "; ".join(errors)
+
+
+def push_wav_to_esp(
+    esp_base: str,
+    wav_path: Path,
+    serve_host: str = HOST,
+    serve_port: int = PORT,
+) -> Tuple[bool, str]:
+    """Push WAV to ESP amp. Chunks oversized files; play_wav first; play_url fallback."""
+    host = urllib.parse.urlparse(
+        esp_base if "://" in esp_base else f"http://{esp_base}"
+    ).hostname
+    if not host:
+        return False, "bad esp host"
+    drive = f"http://{host}:8765"
+
+    # Never slice songs into 8s parts — async amp cancelled the previous chunk.
+    ok, detail = _push_one_wav_to_esp(
+        drive, wav_path, serve_host=serve_host, serve_port=serve_port
+    )
+    return ok, detail
 
 
 def _guess_lan_ip() -> Optional[str]:
@@ -957,7 +1251,7 @@ def _esp_host(esp_base: Optional[str] = None) -> str:
     if "://" not in base:
         base = "http://" + base
     host = urllib.parse.urlparse(base).hostname
-    return host or "192.168.1.104"
+    return host or "192.168.1.108"
 
 
 def _esp_drive_base(esp_base: Optional[str] = None) -> str:
@@ -1025,8 +1319,6 @@ def proxy_esp_status(esp_base: Optional[str] = None) -> Tuple[int, bytes, str]:
         bases.append(esp_base)
     else:
         bases.append(DEFAULT_ESP)
-        for n in (104, 105, 106, 102, 100):
-            bases.append(f"http://192.168.1.{n}")
     seen = set()
     last_err = "unreachable"
     for b in bases:
@@ -1059,10 +1351,169 @@ def proxy_esp_status(esp_base: Optional[str] = None) -> Tuple[int, bytes, str]:
     )
 
 
+DRIVE_UDP_PORT = int(os.environ.get("TRACE_E_DRIVE_UDP_PORT") or 8767)
+# Browsers cannot speak UDP, so the datagram hop starts here: UI -> brain (keep-alive
+# HTTP on the LAN/loopback) -> ESP (UDP). Set TRACE_E_DRIVE_UDP=0 to force HTTP.
+DRIVE_UDP_ENABLED = (os.environ.get("TRACE_E_DRIVE_UDP") or "1").strip().lower() not in (
+    "0",
+    "false",
+    "off",
+)
+
+
+class _DrivePump:
+    """Latest-command wins. Browser returns immediately; ESP is hit off-thread.
+
+    Plain left/right commands go out as a 4-byte UDP datagram from the request
+    thread — no TCP handshake, no queue, no thread hop. Everything else (cmd=stop,
+    trim, chase) still needs the HTTP endpoint, so that path keeps the worker.
+    """
+
+    # Keep short: a stalled WiFi attempt must not block the next WASD sample.
+    TIMEOUT_S = 0.22
+    MAGIC = b"TE"
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._target: Optional[str] = None
+        self._evt = threading.Event()
+        self._last_ms = 0.0
+        self._ok = 0
+        self._err = 0
+        self._udp_sent = 0
+        self._udp_err = 0
+        self._sock: Optional[socket.socket] = None
+        threading.Thread(target=self._run, name="esp-drive", daemon=True).start()
+
+    def submit(self, target: str) -> None:
+        with self._lock:
+            self._target = target
+        self._evt.set()
+
+    def send_lr(self, host: str, left: int, right: int) -> bool:
+        """Fire-and-forget drive datagram. False means caller should use HTTP."""
+        if not (DRIVE_UDP_ENABLED and host):
+            return False
+        left = max(-100, min(100, int(left)))
+        right = max(-100, min(100, int(right)))
+        pkt = self.MAGIC + struct.pack("bb", left, right)
+        try:
+            with self._lock:
+                if self._sock is None:
+                    self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    self._sock.setblocking(False)
+                sock = self._sock
+            sock.sendto(pkt, (host, DRIVE_UDP_PORT))
+            with self._lock:
+                self._udp_sent += 1
+            if time.time() - _STEER_TUNE_TS > 12.0:
+                threading.Thread(
+                    target=_apply_steer_tune,
+                    args=(f"http://{host}",),
+                    daemon=True,
+                ).start()
+            return True
+        except Exception:
+            with self._lock:
+                self._udp_err += 1
+                if self._sock is not None:
+                    try:
+                        self._sock.close()
+                    except Exception:
+                        pass
+                    self._sock = None
+            return False
+
+    def stats(self) -> dict:
+        with self._lock:
+            return {
+                "last_ms": round(self._last_ms, 1),
+                "ok": self._ok,
+                "err": self._err,
+                "timeout_s": self.TIMEOUT_S,
+                "link": "udp" if DRIVE_UDP_ENABLED else "http",
+                "udp_port": DRIVE_UDP_PORT,
+                "udp_sent": self._udp_sent,
+                "udp_err": self._udp_err,
+            }
+
+    def _run(self) -> None:
+        while True:
+            self._evt.wait()
+            while True:
+                with self._lock:
+                    target = self._target
+                    self._target = None
+                if not target:
+                    self._evt.clear()
+                    break
+                t0 = time.perf_counter()
+                ok = False
+                try:
+                    req = urllib.request.Request(
+                        target,
+                        method="GET",
+                        headers={"Accept": "application/json", "Connection": "close"},
+                    )
+                    with urllib.request.urlopen(req, timeout=self.TIMEOUT_S) as resp:
+                        resp.read()
+                    ok = True
+                except Exception:
+                    ok = False
+                dt = (time.perf_counter() - t0) * 1000.0
+                with self._lock:
+                    self._last_ms = dt
+                    if ok:
+                        self._ok += 1
+                    else:
+                        self._err += 1
+
+
+DRIVE_PUMP = _DrivePump()
+
+
+def proxy_esp_chase(
+    on: Optional[bool] = None, esp_base: Optional[str] = None
+) -> Tuple[int, bytes, str]:
+    """Proxy ESP orange-rag Fetch/chase. Optional play mode — not Ollie follow."""
+    h = _esp_host(esp_base)
+    q = f"?on={'1' if on else '0'}" if on is not None else ""
+    url = f"http://{h}:8765/api/chase{q}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            body = resp.read()
+            ctype = resp.headers.get("Content-Type") or "application/json"
+            return int(resp.status), body, ctype
+    except Exception as exc:
+        return 502, json.dumps({"ok": False, "error": str(exc), "url": url}).encode(), "application/json"
+
+
+def proxy_esp_headlights(
+    on: Optional[bool] = None,
+    brightness: Optional[int] = None,
+    esp_base: Optional[str] = None,
+) -> Tuple[int, bytes, str]:
+    """Proxy pretend headlights on GPIO38."""
+    h = _esp_host(esp_base)
+    if brightness is not None:
+        q = f"?brightness={max(0, min(100, int(brightness)))}"
+    else:
+        q = f"?on={'1' if on else '0'}" if on is not None else ""
+    url = f"http://{h}:8765/api/headlights{q}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            body = resp.read()
+            ctype = resp.headers.get("Content-Type") or "application/json"
+            return int(resp.status), body, ctype
+    except Exception as exc:
+        return 502, json.dumps({"ok": False, "error": str(exc), "url": url}).encode(), "application/json"
+
+
 def proxy_esp_drive(query: str, esp_base: Optional[str] = None) -> Tuple[int, bytes, str]:
-    """Forward drive query to ESP :8765/api/drive (avoids browser CORS)."""
+    """Queue drive to ESP :8765/api/drive. Returns immediately (no cam/input wait)."""
     qs = urllib.parse.parse_qs(query, keep_blank_values=True)
-    # Allow ?esp= override without forwarding it
     override = None
     if "esp" in qs and qs["esp"]:
         override = qs.pop("esp")[0]
@@ -1072,17 +1523,53 @@ def proxy_esp_drive(query: str, esp_base: Optional[str] = None) -> Tuple[int, by
     target = f"{_esp_drive_base(override or esp_base)}/api/drive"
     if query:
         target = f"{target}?{query}"
-    try:
-        req = urllib.request.Request(target, method="GET", headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=0.6) as resp:
-            body = resp.read()
-            ctype = resp.headers.get("Content-Type", "application/json")
-            return int(resp.status), body, ctype
-    except urllib.error.HTTPError as exc:
-        body = exc.read() if hasattr(exc, "read") else str(exc).encode("utf-8")
-        return int(exc.code), body, "application/json"
-    except Exception as exc:
-        return 502, json.dumps({"ok": False, "error": str(exc), "url": target}).encode("utf-8"), "application/json"
+    if COVER_LISTEN is not None:
+        try:
+            COVER_LISTEN.note_drive()
+        except Exception:
+            pass
+    # WASD / pad must win over Follow — never join() on this path (was lagging W ~2s)
+    if PERSON_FOLLOWER is not None:
+        try:
+            if PERSON_FOLLOWER.status().get("running"):
+                left = int((qs.get("left") or qs.get("l") or ["0"])[0] or 0)
+                right = int((qs.get("right") or qs.get("r") or ["0"])[0] or 0)
+                if left != 0 or right != 0:
+                    if hasattr(PERSON_FOLLOWER, "stop_async"):
+                        PERSON_FOLLOWER.stop_async("WASD takeover", coast=False)
+                    else:
+                        PERSON_FOLLOWER.stop("WASD takeover", coast=False)
+        except Exception:
+            pass
+    # Plain left/right → UDP straight from this thread. Only fall back to the HTTP
+    # pump for cmd=/trim=/anything the datagram format cannot carry.
+    if not qs.get("cmd"):
+        has_lr = any(k in qs for k in ("left", "right", "l", "r"))
+        if has_lr:
+            try:
+                left = int((qs.get("left") or qs.get("l") or ["0"])[0] or 0)
+                right = int((qs.get("right") or qs.get("r") or ["0"])[0] or 0)
+            except Exception:
+                left = right = 0
+            host = _esp_host(override or esp_base)
+            if DRIVE_PUMP.send_lr(host, left, right):
+                # No cam hold on this path: a datagram does not compete with the
+                # video socket, so the feed can keep running while driving.
+                return 200, b'{"ok":true,"link":"udp"}', "application/json"
+
+    # HTTP fallback only: yield the radio so the video stream cannot stall the
+    # drive request. Must stay well under the UI's drive repeat — a 1.25s hold meant
+    # a held W key pushed hold_until forward forever and froze the feed.
+    if CAM_HUB is not None:
+        try:
+            left = int((qs.get("left") or qs.get("l") or ["0"])[0] or 0)
+            right = int((qs.get("right") or qs.get("r") or ["0"])[0] or 0)
+            if left != 0 or right != 0:
+                CAM_HUB.hold_for(0.15)
+        except Exception:
+            pass
+    DRIVE_PUMP.submit(target)
+    return 200, b'{"ok":true,"queued":true}', "application/json"
 
 
 def handle_talk(text: str) -> dict:
@@ -1101,6 +1588,8 @@ def handle_talk(text: str) -> dict:
     target_id = parse_human_command(text) if parse_human_command else None
     music_q = parse_music_command(text) if parse_music_command else None
     if target_id and PERSON_FOLLOWER is not None:
+        if SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+            SLAM_MAPPER.stop("follow takeover")
         st = PERSON_FOLLOWER.status()
         if not st.get("running"):
             PERSON_FOLLOWER.start(esp_base=DEFAULT_ESP, target_human=target_id)
@@ -1111,18 +1600,44 @@ def handle_talk(text: str) -> dict:
     elif music_q and YT_PLAYER is not None:
         YT_PLAYER.play_async(music_q)
         reply = f"Okay Ollie — playing {music_q}!"
-    elif any(w in lower for w in ("nav off", "stop follow", "stop nav", "cancel follow")):
+    elif any(w in lower for w in ("nav off", "stop follow", "stop nav", "cancel follow", "stay", "stay still", "don't move", "do not move", "freeze")):
         if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
-            PERSON_FOLLOWER.stop("voice stop")
+            PERSON_FOLLOWER.stop("voice stay")
             follow_action = {"nav": False}
-            reply = "Nav off — motors stopped."
+            reply = "Okay — staying put."
+        elif SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+            SLAM_MAPPER.stop("voice stay")
+            follow_action = {"slam": False}
+            reply = "Okay — staying put."
         else:
-            reply = "Nav is already idle."
-    elif any(w in lower for w in ("nav on", "start follow", "follow me", "start nav", "follow ollie")):
+            reply = "I'm already still."
+    elif any(w in lower for w in ("map off", "stop slam", "stop mapping", "slam off")):
+        if SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+            SLAM_MAPPER.stop("voice stop")
+            follow_action = {"slam": False}
+            reply = "Map off — motors stopped."
+        else:
+            reply = "Map is already idle."
+    elif any(w in lower for w in ("map on", "start slam", "start mapping", "slam on", "build a map")):
+        if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
+            PERSON_FOLLOWER.stop("slam takeover")
+        if SLAM_MAPPER is not None:
+            SLAM_MAPPER.start(esp_base=DEFAULT_ESP, explore=True)
+            follow_action = {"slam": True, "explore": True}
+            reply = "Map on — I'll wander and sketch the room."
+        else:
+            reply = "SLAM module unavailable."
+    elif any(w in lower for w in ("nav on", "start follow", "follow me", "start nav", "follow ollie", "come here", "come on")):
+        if SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+            SLAM_MAPPER.stop("follow takeover")
+        try:
+            proxy_esp_chase(False, DEFAULT_ESP)
+        except Exception:
+            pass
         if PERSON_FOLLOWER is not None:
             PERSON_FOLLOWER.start(esp_base=DEFAULT_ESP, target_human=1)
             follow_action = {"nav": True, "target_human": 1}
-            reply = "Nav on — I'll stick with Ollie as Human 1."
+            reply = "Okay Ollie — I'll follow carefully."
         else:
             reply = "Follow module unavailable."
     elif any(w in lower for w in ("hello", "hi", "hey")):
@@ -1133,6 +1648,9 @@ def handle_talk(text: str) -> dict:
         if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
             PERSON_FOLLOWER.stop("voice halt")
             follow_action = {"nav": False, "motors": 0}
+        if SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+            SLAM_MAPPER.stop("voice halt")
+            follow_action = {"slam": False, "motors": 0}
         reply = "Copy that — standing by."
     else:
         # Kid-safe cloud chat when keys exist; else short stub
@@ -1236,8 +1754,12 @@ def _peanut_engine_chain(force: str) -> List[str]:
         if force == "spidey":
             return [force] + [x for x in rest if x != "pyttsx3"] + ["pyttsx3"]
         return [force] + rest
-    # peanut-auto: true Ana voice, then Groq, then Gemini, optional Spidey, pyttsx3
-    chain = ["ana", "groq", "gemini"]
+    # peanut-auto: true Ana voice, then keyed cloud TTS, optional Spidey, pyttsx3
+    chain = ["ana"]
+    if GROQ_API_KEY:
+        chain.append("groq")
+    if GEMINI_API_KEY:
+        chain.append("gemini")
     if SPIDEY_TTS_ENABLED:
         chain.append("spidey")
     chain.append("pyttsx3")
@@ -1309,16 +1831,11 @@ def handle_speak(
             "keys": _key_status(),
         }
 
-    # Loudness restore — beep-kill era left peanut vol=0; Trace may lack /api/volume until flash
-    wav = amplify_wav_inplace(wav, gain=2.6)
+    # Loudness restore — skip if already amplified
+    if not wav.stem.endswith("_loud"):
+        wav = amplify_wav_inplace(wav, gain=2.4)
     # Ensure amplified file lives under _tts_cache for ESP play_url
-    if wav.parent != CACHE_DIR:
-        dest = CACHE_DIR / wav.name
-        try:
-            dest.write_bytes(wav.read_bytes())
-            wav = dest
-        except Exception:
-            pass
+    wav = _stage_wav_in_tts_cache(wav)
 
     ok_esp, detail = push_wav_to_esp(esp, wav)
     if ok_esp:
@@ -1338,7 +1855,7 @@ def handle_speak(
                 "gemini": bool(GEMINI_API_KEY),
             },
             "allow_laptop": use_laptop,
-            "volume_note": "wav gain×2.6; /api/volume nudged if present",
+            "volume_note": "wav gain×2.4; /api/volume nudged if present",
         }
 
     if use_laptop and play_laptop(wav):
@@ -1378,7 +1895,10 @@ class TraceHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(DESKTOP_DIR), **kwargs)
 
     def log_message(self, fmt: str, *args) -> None:
-        sys.stderr.write("[speak] " + (fmt % args) + "\n")
+        msg = (fmt % args) if args else str(fmt)
+        if any(s in msg for s in ("/api/music/status", "/api/listen", "/api/follow/status", "/api/slam/status", "/api/esp/drive", "/api/esp/latest", "/api/cam/latest")):
+            return
+        sys.stderr.write("[speak] " + msg + "\n")
 
     def _cors(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -1392,7 +1912,10 @@ class TraceHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            pass  # client went away mid-response — never kill the server
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
@@ -1400,6 +1923,17 @@ class TraceHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        try:
+            self._do_GET_inner()
+        except Exception:
+            traceback.print_exc()
+            try:
+                if not self.wfile.closed:
+                    self.send_error(500, "handler failed")
+            except Exception:
+                pass
+
+    def _do_GET_inner(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         qs = parsed.query
@@ -1435,6 +1969,18 @@ class TraceHandler(SimpleHTTPRequestHandler):
                         YT_PLAYER.status() if YT_PLAYER is not None else {"enabled": False}
                     ),
                     "cam_hub": (CAM_HUB.status() if CAM_HUB else None),
+                    "drive_pump": DRIVE_PUMP.stats(),
+                    "slam": {
+                        "available": SLAM_MAPPER is not None,
+                        "status": (SLAM_MAPPER.status() if SLAM_MAPPER else None),
+                        "endpoints": [
+                            "/api/slam/start",
+                            "/api/slam/stop",
+                            "/api/slam/reset",
+                            "/api/slam/status",
+                            "/api/slam/map",
+                        ],
+                    },
                     "sfx": sorted(p.name for p in SFX_DIR.glob("*.wav")),
                     "tts": {
                         "default": DEFAULT_TTS_ENGINE,
@@ -1494,6 +2040,27 @@ class TraceHandler(SimpleHTTPRequestHandler):
             self._send(code, body, ctype)
             return
 
+        if path in ("/api/slam/status", "/api/slam"):
+            if SLAM_MAPPER is None:
+                code, body, ctype = _json_bytes(
+                    {"ok": False, "error": "slam module missing (opencv?)"}, 503
+                )
+            else:
+                code, body, ctype = _json_bytes(SLAM_MAPPER.status())
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/slam/map", "/api/slam/map.jpg"):
+            if SLAM_MAPPER is None:
+                self._send(503, b'{"ok":false,"error":"slam unavailable"}', "application/json")
+                return
+            png = SLAM_MAPPER.map_png()
+            if not png:
+                self._send(404, b'{"ok":false,"error":"no map yet"}', "application/json")
+                return
+            self._send(200, png, "image/jpeg")
+            return
+
         if path in ("/api/follow/status", "/api/follow"):
             if PERSON_FOLLOWER is None:
                 code, body, ctype = _json_bytes(
@@ -1516,30 +2083,16 @@ class TraceHandler(SimpleHTTPRequestHandler):
             if not jpg:
                 self._send(404, b'{"ok":false,"error":"no frame yet"}', "application/json")
                 return
-            self.send_response(200)
-            self._cors()
-            self.send_header("Content-Type", "image/jpeg")
-            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Content-Length", str(len(jpg)))
-            self.end_headers()
-            self.wfile.write(jpg)
+            self._send(200, jpg, "image/jpeg")
             return
 
-        if path in ("/api/cam/latest", "/api/esp/latest"):
-            esp = (q.get("esp") or q.get("esp_base") or [None])[0]
+        if path in ("/api/cam/latest", "/api/esp/latest", "/api/esp/frame"):
             if CAM_HUB is None:
                 self._send(503, b'{"ok":false,"error":"cam hub missing"}', "application/json")
                 return
-            CAM_HUB.ensure(esp or DEFAULT_ESP)
-            # Prefer annotated frame while following
-            jpg = None
-            if PERSON_FOLLOWER is not None:
-                st = PERSON_FOLLOWER.status()
-                if st.get("running"):
-                    jpg = PERSON_FOLLOWER.annotated_jpeg()
-            if not jpg:
-                jpg = CAM_HUB.latest_jpeg()
+            # Instant: last JPEG only. No discover, no wait, no follow lock.
+            # Drive UDP and this path must never share work with Talk/Follow.
+            jpg = CAM_HUB.latest_jpeg(preview=True)
             if not jpg:
                 err = CAM_HUB.status().get("error") or "no frame"
                 self._send(
@@ -1548,7 +2101,18 @@ class TraceHandler(SimpleHTTPRequestHandler):
                     "application/json",
                 )
                 return
-            self._send(200, jpg, "image/jpeg")
+            self.send_response(200)
+            self._cors()
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.send_header("Content-Length", str(len(jpg)))
+            self.end_headers()
+            try:
+                self.wfile.write(jpg)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass
             return
 
         if path in ("/api/esp/stream", "/api/cam/stream", "/api/cam/mjpeg"):
@@ -1585,10 +2149,10 @@ class TraceHandler(SimpleHTTPRequestHandler):
                         chunk = upstream.read(65536)
                         if not chunk:
                             break
-                        self.wfile.write(chunk)
                         try:
+                            self.wfile.write(chunk)
                             self.wfile.flush()
-                        except Exception:
+                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                             break
                 finally:
                     try:
@@ -1598,13 +2162,7 @@ class TraceHandler(SimpleHTTPRequestHandler):
                 return
 
             # Shared hub MJPEG — never opens a second ESP :82 socket
-            CAM_HUB.ensure(esp or DEFAULT_ESP)
-            force_annot = (q.get("annotate") or q.get("nav") or ["0"])[0] in (
-                "1",
-                "true",
-                "yes",
-                "on",
-            )
+            CAM_HUB.ensure(_resolve_esp(esp or DEFAULT_ESP))
             boundary = b"frame"
             self.send_response(200)
             self._cors()
@@ -1627,21 +2185,31 @@ class TraceHandler(SimpleHTTPRequestHandler):
                     if PERSON_FOLLOWER is not None:
                         st = PERSON_FOLLOWER.status()
                         following = bool(st.get("running"))
-                    if following or force_annot:
-                        if PERSON_FOLLOWER is not None and following:
-                            # Wait for a fresh annotated frame while nav is live
-                            jpg, annot_seq = PERSON_FOLLOWER.wait_annotated(
-                                timeout=0.85, after_seq=annot_seq
-                            )
-                        elif PERSON_FOLLOWER is not None:
-                            # annotate=1 but nav not running yet — never block 0.85s
-                            jpg = PERSON_FOLLOWER.annotated_jpeg()
-                            if jpg is not None:
-                                annot_seq = int(st.get("annot_seq") or annot_seq)
+                    # Annotated frames only exist while nav is live, and the buffer keeps
+                    # its last frame after Follow stops. Serving that on annotate=1 pinned
+                    # the feed to a stale image forever, so gate purely on `following`.
+                    if following and PERSON_FOLLOWER is not None:
+                        jpg, annot_seq = PERSON_FOLLOWER.wait_annotated(
+                            timeout=0.85, after_seq=annot_seq
+                        )
                         if jpg is None and CAM_HUB is not None:
-                            jpg, seq = CAM_HUB.wait_jpeg(timeout=0.4, after_seq=seq)
+                            jpg, seq = CAM_HUB.wait_jpeg(timeout=0.12, after_seq=seq)
+                            if jpg is not None:
+                                prev = CAM_HUB.latest_jpeg(preview=True)
+                                if prev:
+                                    jpg = prev
                     else:
-                        jpg, seq = CAM_HUB.wait_jpeg(timeout=1.0, after_seq=seq)
+                        # Block until the hub has a genuinely NEWER frame, then push it
+                        # at once. The old path timed out after 50ms, re-sent the frame
+                        # it had already sent, and then slept — so every frame carried
+                        # the pacing delay instead of the camera's own timing.
+                        jpg, new_seq = CAM_HUB.wait_jpeg(timeout=1.0, after_seq=seq)
+                        if jpg is None or new_seq <= seq:
+                            continue
+                        seq = new_seq
+                        prev = CAM_HUB.latest_jpeg(preview=True)
+                        if prev:
+                            jpg = prev
                     if not jpg:
                         continue
                     header = (
@@ -1650,13 +2218,15 @@ class TraceHandler(SimpleHTTPRequestHandler):
                         b"Content-Length: " + str(len(jpg)).encode() + b"\r\n"
                         b"Cache-Control: no-store\r\n\r\n"
                     )
-                    self.wfile.write(header)
-                    self.wfile.write(jpg)
-                    self.wfile.write(b"\r\n")
                     try:
+                        self.wfile.write(header)
+                        self.wfile.write(jpg)
+                        self.wfile.write(b"\r\n")
                         self.wfile.flush()
-                    except Exception:
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                         break
+                    # No sleep: both waits above block on a new frame, and the write
+                    # itself blocks on a slow browser, so nothing can queue a backlog.
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
             except Exception:
@@ -1666,6 +2236,68 @@ class TraceHandler(SimpleHTTPRequestHandler):
         if path in ("/api/esp/capture", "/api/cam/capture"):
             esp = (q.get("esp") or q.get("esp_base") or [None])[0]
             code, body, ctype = proxy_esp_capture(esp)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/chase", "/api/fetch"):
+            on_raw = (q.get("on") or [None])[0]
+            on_flag: Optional[bool] = None
+            if on_raw is not None:
+                on_flag = str(on_raw).strip().lower() in ("1", "true", "yes", "on")
+            esp = (q.get("esp") or q.get("esp_base") or [None])[0] or DEFAULT_ESP
+            if on_flag:
+                if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
+                    try:
+                        PERSON_FOLLOWER.stop("fetch takeover")
+                    except Exception:
+                        pass
+            code, body, ctype = proxy_esp_chase(on_flag, esp)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/esp/headlights", "/api/esp/lights", "/api/headlights", "/api/lights"):
+            on_raw = (q.get("on") or q.get("enable") or q.get("lights") or [None])[0]
+            brightness_raw = (q.get("brightness") or q.get("level") or [None])[0]
+            on_flag: Optional[bool] = None
+            if on_raw is not None:
+                on_flag = str(on_raw).strip().lower() in ("1", "true", "yes", "on")
+            brightness: Optional[int] = None
+            if brightness_raw is not None:
+                try:
+                    brightness = int(brightness_raw)
+                except (TypeError, ValueError):
+                    brightness = None
+            esp = (q.get("esp") or q.get("esp_base") or [None])[0] or DEFAULT_ESP
+            code, body, ctype = proxy_esp_headlights(on_flag, brightness, esp)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/steer", "/api/esp/steer", "/api/snapback"):
+            snap_raw = (q.get("snap") or q.get("snapback") or q.get("on") or [None])[0]
+            esp = (q.get("esp") or q.get("esp_base") or [None])[0]
+            pct_l = (q.get("center_pct_l") or q.get("pct_l") or q.get("left") or [None])[0]
+            pct_r = (q.get("center_pct_r") or q.get("pct_r") or q.get("right") or [None])[0]
+            ms_l = (q.get("center_l") or q.get("ms_l") or [None])[0]
+            ms_r = (q.get("center_r") or q.get("ms_r") or [None])[0]
+            on: Optional[bool] = None
+            if snap_raw is not None:
+                on = str(snap_raw).strip().lower() in ("1", "true", "yes", "on")
+            if any(v is not None for v in (on, pct_l, pct_r, ms_l, ms_r)):
+                code, body, ctype = _json_bytes(
+                    set_steer(
+                        on=on, pct_l=pct_l, pct_r=pct_r, ms_l=ms_l, ms_r=ms_r, esp_base=esp
+                    )
+                )
+            else:
+                code, body, ctype = _json_bytes(steer_config())
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/siren", "/api/esp/siren"):
+            esp = (q.get("esp") or q.get("esp_base") or [None])[0]
+            ms = (q.get("ms") or q.get("duration") or [None])[0]
+            mode = (q.get("mode") or q.get("style") or [None])[0]
+            code, body, ctype = proxy_esp_siren(ms, esp, mode)
             self._send(code, body, ctype)
             return
 
@@ -1740,7 +2372,13 @@ class TraceHandler(SimpleHTTPRequestHandler):
                         ctype_in = str(data.get("mime") or "audio/webm")
                     except Exception:
                         audio = b""
-                result = COVER_LISTEN.submit_audio(audio, ctype_in)
+                # Prefer synchronous phone Talk path
+                if hasattr(COVER_LISTEN, "process_audio") and COVER_LISTEN.status().get(
+                    "phase"
+                ) not in ("listening", "ack"):
+                    result = COVER_LISTEN.process_audio(audio, ctype_in)
+                else:
+                    result = COVER_LISTEN.submit_audio(audio, ctype_in)
             code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 400)
             self._send(code, body, ctype)
             return
@@ -1774,6 +2412,24 @@ class TraceHandler(SimpleHTTPRequestHandler):
             self._send(code, body, ctype)
             return
 
+        if path in ("/api/steer", "/api/esp/steer", "/api/snapback"):
+            on_raw = data.get("snap")
+            if on_raw is None:
+                on_raw = data.get("snapback")
+            if on_raw is None:
+                on_raw = data.get("on")
+            esp = data.get("esp") or data.get("esp_base")
+            if on_raw is None:
+                code, body, ctype = _json_bytes(steer_config())
+            else:
+                if isinstance(on_raw, bool):
+                    on = on_raw
+                else:
+                    on = str(on_raw).strip().lower() in ("1", "true", "yes", "on")
+                code, body, ctype = _json_bytes(set_snapback(on, esp))
+            self._send(code, body, ctype)
+            return
+
         if path in ("/api/speak", "/api/say"):
             esp = data.get("esp") or data.get("esp_base")
             engine = data.get("engine") or data.get("voice") or data.get("tts")
@@ -1800,10 +2456,63 @@ class TraceHandler(SimpleHTTPRequestHandler):
             self._send(code, body, ctype)
             return
 
+        if path in ("/api/slam/start", "/api/slam/on"):
+            if SLAM_MAPPER is None:
+                result = {"ok": False, "error": "slam module missing"}
+            else:
+                try:
+                    if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
+                        PERSON_FOLLOWER.stop("slam takeover")
+                    esp = data.get("esp") or data.get("esp_base") or DEFAULT_ESP
+                    explore = data.get("explore")
+                    if explore is None:
+                        explore = True
+                    result = SLAM_MAPPER.start(esp_base=str(esp), explore=bool(explore))
+                except Exception as exc:
+                    result = {"ok": False, "error": str(exc)}
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/slam/stop", "/api/slam/off"):
+            if SLAM_MAPPER is None:
+                result = {"ok": False, "error": "slam module missing"}
+            else:
+                reason = str(data.get("reason") or "ui stop")
+                try:
+                    result = SLAM_MAPPER.stop(reason)
+                except Exception as exc:
+                    result = {"ok": False, "error": str(exc)}
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
+        if path == "/api/slam/reset":
+            if SLAM_MAPPER is None:
+                result = {"ok": False, "error": "slam module missing"}
+            else:
+                try:
+                    result = SLAM_MAPPER.reset()
+                except Exception as exc:
+                    result = {"ok": False, "error": str(exc)}
+            code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
         if path in ("/api/follow/start", "/api/follow/on"):
             if PERSON_FOLLOWER is None:
                 result = {"ok": False, "error": "follow module missing"}
             else:
+                # Fetch (ESP orange chase) yields to person follow
+                try:
+                    proxy_esp_chase(False, data.get("esp") or data.get("esp_base") or DEFAULT_ESP)
+                except Exception:
+                    pass
+                if SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+                    try:
+                        SLAM_MAPPER.stop("follow takeover")
+                    except Exception:
+                        pass
                 esp = data.get("esp") or data.get("esp_base") or DEFAULT_ESP
                 tid = data.get("target_human")
                 if tid is None:
@@ -1828,6 +2537,53 @@ class TraceHandler(SimpleHTTPRequestHandler):
                 except Exception as exc:
                     result = {"ok": False, "error": str(exc)}
             code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/chase", "/api/fetch"):
+            # Optional orange-rag Fetch mode (on-ESP). Not the Ollie person-follow product.
+            q = dict(urllib.parse.parse_qsl(qs, keep_blank_values=True))
+            on_raw = data.get("on")
+            if on_raw is None:
+                on_raw = q.get("on")
+            on_flag: Optional[bool] = None
+            if on_raw is not None:
+                on_flag = str(on_raw).strip().lower() in ("1", "true", "yes", "on")
+            esp = data.get("esp") or data.get("esp_base") or q.get("esp") or DEFAULT_ESP
+            if on_flag:
+                if PERSON_FOLLOWER is not None and PERSON_FOLLOWER.status().get("running"):
+                    try:
+                        PERSON_FOLLOWER.stop("fetch takeover")
+                    except Exception:
+                        pass
+                if SLAM_MAPPER is not None and SLAM_MAPPER.status().get("running"):
+                    try:
+                        SLAM_MAPPER.stop("fetch takeover")
+                    except Exception:
+                        pass
+            code, body, ctype = proxy_esp_chase(on_flag, esp)
+            self._send(code, body, ctype)
+            return
+
+        if path in ("/api/esp/headlights", "/api/esp/lights", "/api/headlights", "/api/lights"):
+            q = dict(urllib.parse.parse_qsl(qs, keep_blank_values=True))
+            on_raw = data.get("on")
+            if on_raw is None:
+                on_raw = data.get("enable") or data.get("lights") or q.get("on")
+            brightness_raw = data.get("brightness")
+            if brightness_raw is None:
+                brightness_raw = data.get("level") or q.get("brightness") or q.get("level")
+            on_flag: Optional[bool] = None
+            if on_raw is not None:
+                on_flag = str(on_raw).strip().lower() in ("1", "true", "yes", "on")
+            brightness: Optional[int] = None
+            if brightness_raw is not None:
+                try:
+                    brightness = int(brightness_raw)
+                except (TypeError, ValueError):
+                    brightness = None
+            esp = data.get("esp") or data.get("esp_base") or q.get("esp") or DEFAULT_ESP
+            code, body, ctype = proxy_esp_headlights(on_flag, brightness, esp)
             self._send(code, body, ctype)
             return
 
@@ -1866,8 +2622,14 @@ class TraceHandler(SimpleHTTPRequestHandler):
                 result = {"ok": False, "error": "follow module missing"}
             else:
                 reason = str(data.get("reason") or "ui stop")
+                # Default coast on Follow-off; WASD passes coast:false so W stays live
+                coast_raw = data.get("coast", True)
+                coast = str(coast_raw).lower() not in ("0", "false", "no", "off")
                 try:
-                    result = PERSON_FOLLOWER.stop(reason)
+                    if (not coast) and hasattr(PERSON_FOLLOWER, "stop_async"):
+                        result = PERSON_FOLLOWER.stop_async(reason, coast=False)
+                    else:
+                        result = PERSON_FOLLOWER.stop(reason, coast=coast)
                 except Exception as exc:
                     result = {"ok": False, "error": str(exc)}
             code, body, ctype = _json_bytes(result, 200 if result.get("ok") else 500)
@@ -1908,24 +2670,36 @@ def main() -> int:
         f"({'ready' if CAM_HUB else 'UNAVAILABLE'})",
         flush=True,
     )
+    print(
+        f"SLAM map              POST /api/slam/start|stop|reset  GET /api/slam/status|map  "
+        f"({'ready' if SLAM_MAPPER else 'UNAVAILABLE'})",
+        flush=True,
+    )
     print(f"ESP default           {DEFAULT_ESP}", flush=True)
     print(f"SFX dir               {SFX_DIR}", flush=True)
     if CAM_HUB is not None:
         try:
-            CAM_HUB.ensure(DEFAULT_ESP)
-            print(f"Cam hub warming       {DEFAULT_ESP}:82/stream", flush=True)
+            live = _resolve_esp(DEFAULT_ESP)
+            CAM_HUB.ensure(live)
+            _apply_steer_tune(live)
+            print(f"Cam hub warming       {live}", flush=True)
         except Exception as exc:
             print(f"Cam hub warm failed   {exc}", flush=True)
     if COVER_LISTEN is not None:
         try:
-            COVER_LISTEN.attach(handle_speak, PERSON_FOLLOWER)
-            COVER_LISTEN.start(DEFAULT_ESP)
+            COVER_LISTEN.esp_base = DEFAULT_ESP
+            COVER_LISTEN._speak = handle_speak
+            COVER_LISTEN._follower = PERSON_FOLLOWER
+            # Phone Talk only — do not start cover-US thread (steals WASD)
             print(
-                "Cover-listen          cover HC-SR04 -> Listening! -> Whisper/Groq -> TTS",
+                "Talk/listen           POST /api/listen/audio  (phone Hold Talk; cover US off)",
                 flush=True,
             )
         except Exception as exc:
-            print(f"Cover-listen failed   {exc}", flush=True)
+            print(f"Talk/listen attach failed   {exc}", flush=True)
+    else:
+        print("Talk/listen           UNAVAILABLE", flush=True)
+    print("Fetch/chase           GET|POST /api/chase|/api/fetch  (ESP orange rag)", flush=True)
     if YT_PLAYER is not None:
         try:
             YT_PLAYER.attach(

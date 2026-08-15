@@ -209,9 +209,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val DEFAULT_ESP_BASE = "http://192.168.1.104"
-        const val DEFAULT_ESP_STREAM = "http://192.168.1.104:82/stream"
+        const val DEFAULT_ESP_BASE = "http://192.168.1.108"
+        const val DEFAULT_ESP_STREAM = "http://192.168.1.108:82/stream"
         /** PC running desktop/speak_server.py — editable in UI (never 127.0.0.1 on tablet). */
-        const val DEFAULT_BRAIN = "http://192.168.1.102:8787"
+        const val DEFAULT_BRAIN = "http://192.168.1.105:8788"
     }
 }

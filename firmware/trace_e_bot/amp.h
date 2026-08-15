@@ -9,7 +9,7 @@
 #include <WebServer.h>
 
 void ampInit();
-/** Register /api/play_wav + /api/play_url + /api/stop_audio + /api/volume on the given server (use drive :8765). */
+/** Register /api/play_wav + /api/play_url + /api/siren + /api/stop_audio + /api/volume on the given server (use drive :8765). */
 void ampRegisterRoutes(WebServer &s);
 bool ampPlayWavBuffer(const uint8_t *wav, size_t len);
 /** Abort play, write silence, disable I2S TX (kills hiss/beep from undriven amp). */

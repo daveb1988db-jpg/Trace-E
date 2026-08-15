@@ -1,2053 +1,878 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WEB-QUARTERS · TRACE-E</title>
-  <style>
-    :root {
-      --spidey-red: #E53935;
-      --spidey-red-deep: #C62828;
-      --web-blue: #1E88E5;
-      --web-blue-deep: #1565C0;
-      --room: #9FD4F5;
-      --screen-blue: #8EC8EF;
-      --frame-red: #7A2A28;
-      --ghost-pink: #E75480;
-      --ghost-purple: #7B5EA7;
-      --spin-black: #1A1A1A;
-      --spin-yellow: #FFD54F;
-      --ink: #1A2430;
-      --white: #FFFFFF;
-      --font: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
-      --display: "Comic Sans MS", "Trebuchet MS", cursive, sans-serif;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; }
-    body {
-      font-family: var(--font);
-      color: var(--ink);
-      min-height: 100vh;
-      background:
-        radial-gradient(ellipse at 50% 0%, rgba(255,255,255,.55), transparent 55%),
-        linear-gradient(180deg, #7EC8F0 0%, #5BB4E8 38%, #3A9AD4 100%);
-      padding: 10px 12px 20px;
-    }
-
-    .hq {
-      max-width: 1080px;
-      margin: 0 auto;
-    }
-
-    /* Compact WEB-Quarters brand — not a wiki/hero page */
-    .topbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
-    .topbar h1 {
-      margin: 0;
-      font-family: var(--display);
-      font-size: clamp(1.25rem, 3.2vw, 1.85rem);
-      font-weight: 900;
-      color: var(--white);
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      text-shadow: 0 2px 0 rgba(30,80,130,.4), 0 0 14px rgba(255,255,255,.45);
-    }
-    .team-mini {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .team-mini img {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      object-fit: cover;
-      object-position: center top;
-      border: 2px solid #fff;
-      box-shadow: 0 2px 0 rgba(0,0,0,.15);
-      background: var(--screen-blue);
-    }
-    .team-mini img.spidey { box-shadow: 0 0 0 2px var(--spidey-red), 0 2px 0 rgba(0,0,0,.15); }
-    .team-mini img.ghost { box-shadow: 0 0 0 2px var(--ghost-pink), 0 2px 0 rgba(0,0,0,.15); }
-    .team-mini img.spin { box-shadow: 0 0 0 2px var(--spin-yellow), 0 2px 0 rgba(0,0,0,.15); }
-
-    /* ===== LAYOUT: screen + ref ===== */
-    .stage {
-      display: grid;
-      grid-template-columns: 1fr 132px;
-      gap: 12px;
-      align-items: start;
-    }
-    @media (max-width: 800px) {
-      .stage { grid-template-columns: 1fr; }
-      .ref-card { display: none; }
-    }
-
-    /* ===== BIG SCREEN with BLUE SPEAKERS ===== */
-    .screen-row {
-      display: grid;
-      /* Narrower speaker columns → larger red screen viewport for LIVE CAM */
-      grid-template-columns: minmax(96px, 118px) minmax(0, 1fr) minmax(96px, 118px);
-      gap: 0;
-      align-items: center;
-      overflow: visible;
-      width: min(100%, 980px);
-      margin-inline: auto;
-      padding-top: 28px; /* room for camera bump above red frame */
-    }
-    @media (max-width: 520px) {
-      .screen-row { grid-template-columns: 72px 1fr 72px; }
-    }
-    .screen-row > .big-screen {
-      filter: drop-shadow(0 16px 26px rgba(40,90,140,.28));
-      min-width: 0;
-    }
-
-    /* Blue speakers: SVG wings grow OUT from screen, flush at join */
-    .speaker {
-      position: relative;
-      z-index: 1;
-      /* POP: vertically centered beside the taller red screen */
-      align-self: center;
-      height: clamp(240px, 68%, 420px);
-      overflow: visible;
-      min-width: 0;
-      background: transparent;
-    }
-    .speaker.left { margin-right: -64px; }
-    .speaker.right { margin-left: -64px; }
-
-    .speaker-svg {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      height: 100%;
-      display: block;
-      pointer-events: none;
-      filter: drop-shadow(0 7px 0 rgba(13,48,86,.36));
-    }
-    /* Flip again: curved edge joins the screen (no mirror — paths are screen-facing) */
-    .speaker.left .speaker-svg {
-      left: 0;
-      width: 100%;
-      transform: none;
-    }
-    .speaker.right .speaker-svg {
-      right: 0;
-      width: 100%;
-      transform: none;
-    }
-
-    /* Black woofer / driver circles stacked down each speaker column */
-    .speaker .drivers {
-      position: absolute;
-      inset: 10% 26% 10% 8%;
-      z-index: 3;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-evenly;
-      align-items: center;
-      pointer-events: none;
-    }
-    .speaker.right .drivers {
-      inset: 10% 8% 10% 26%;
-    }
-    .speaker .driver {
-      width: clamp(28px, 62%, 58px);
-      aspect-ratio: 1;
-      border-radius: 50%;
-      flex-shrink: 0;
-      background:
-        radial-gradient(circle at 38% 32%, #3A3A3A 0 8%, transparent 18%),
-        radial-gradient(circle at 50% 50%, #1A1A1A 0 22%, #0A0A0A 38%, #000 58%, #111 72%, #000 100%);
-      border: 2px solid #0A0A0A;
-      box-shadow:
-        inset 0 0 0 3px #2A2A2A,
-        inset 0 0 0 6px #050505,
-        inset 0 3px 6px rgba(255,255,255,.12),
-        0 2px 4px rgba(0,0,0,.45);
-    }
-    .speaker .driver:nth-child(2),
-    .speaker .driver:nth-child(3) {
-      width: clamp(34px, 72%, 68px);
-    }
-
-    .big-screen {
-      position: relative;
-      z-index: 2;
-      width: 100%;
-      /* Taller red screen viewport */
-      aspect-ratio: 16 / 11.4;
-      overflow: visible;
-    }
-    /* Thick red board / outer frame around the screen */
-    .screen-shell {
-      position: absolute;
-      /* Leave top strip so cam bump can sit in the red bezel */
-      inset: 5% 0 0 0;
-      border-radius: 42% 42% 40% 40% / 26% 26% 34% 34%;
-      background:
-        linear-gradient(180deg, #C85A56 0%, var(--frame-red) 42%, #5A1816 100%);
-      box-shadow:
-        inset 0 0 0 4px rgba(255,190,180,.28),
-        inset 0 0 0 10px rgba(90,24,22,.35),
-        inset 0 -12px 22px rgba(0,0,0,.22),
-        0 2px 0 rgba(255,160,150,.15);
-    }
-    /* Physical camera lens sitting in the top red bezel */
-    .bezel-cam {
-      position: absolute;
-      top: 0.2%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: clamp(34px, 5.2vw, 46px);
-      height: clamp(34px, 5.2vw, 46px);
-      border-radius: 50%;
-      z-index: 6;
-      background:
-        radial-gradient(circle at 38% 32%, rgba(255,255,255,.55) 0 6%, transparent 18%),
-        radial-gradient(circle at 50% 50%, #2A2A2A 0 18%, #0A0A0A 36%, #111 52%, #000 70%, #1A1A1A 100%);
-      border: 5px solid #8B2E2C;
-      box-shadow:
-        0 0 0 3px var(--frame-red),
-        0 0 0 5px rgba(255,200,190,.35),
-        inset 0 0 0 2px #050505,
-        0 4px 10px rgba(0,0,0,.28);
-      display: grid;
-      place-items: center;
-    }
-    .bezel-cam::after {
-      content: "";
-      width: 38%;
-      height: 38%;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle at 40% 35%, #5A8AB8 0 20%, #1A3A55 55%, #061018 100%);
-      box-shadow: inset 0 0 4px rgba(0,0,0,.6);
-    }
-
-    /* Dark blue border ring hugging the display inside the red board */
-    .screen-blue-border {
-      position: absolute;
-      inset: 14% 6.5% 7.5% 6.5%;
-      border-radius: 38% 38% 36% 36% / 22% 22% 30% 30%;
-      background: linear-gradient(180deg, #0A2748, #061830 55%, #0D3A66);
-      box-shadow:
-        0 0 0 2px rgba(6,24,48,.9),
-        inset 0 0 10px rgba(0,0,0,.35);
-      z-index: 1;
-    }
-    .screen-bezel {
-      position: absolute;
-      /* Inset inside red board so red bezel stays visible all around (incl. top under cam) */
-      inset: 16.5% 8.5% 9.5% 8.5%;
-      border-radius: 28% 28% 34% 34% / 18% 18% 28% 28%;
-      background: linear-gradient(180deg, #C8EBFF, var(--screen-blue) 45%, #6BAFD9);
-      overflow: hidden;
-      box-shadow:
-        inset 0 0 36px rgba(255,255,255,.5),
-        inset 0 0 0 2px rgba(10,39,72,.55);
-      z-index: 2;
-    }
-    .web-lines {
-      position: absolute;
-      inset: 0;
-      opacity: .22;
-      pointer-events: none;
-      z-index: 1;
-      background:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='280'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1.4' stroke-opacity='0.45'%3E%3Cpath d='M0 0 L200 140 L400 0'/%3E%3Cpath d='M0 280 L200 140 L400 280'/%3E%3Cpath d='M0 140 H400'/%3E%3Cpath d='M200 0 V280'/%3E%3Ccircle cx='200' cy='140' r='48'/%3E%3Ccircle cx='200' cy='140' r='90'/%3E%3C/g%3E%3C/svg%3E")
-        center / cover no-repeat;
-    }
-    .cam-label {
-      position: absolute;
-      /* Clear curved red bezel + cam housing — was clipped at top-left */
-      top: clamp(36px, 16%, 72px);
-      left: clamp(40px, 14%, 88px);
-      z-index: 5;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: 0.7rem;
-      color: #fff;
-      background: linear-gradient(180deg, #FF6A4A, var(--spidey-red));
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 4px 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.2);
-      animation: pulse 1.4s ease-in-out infinite;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-    @keyframes pulse {
-      0%,100% { filter: brightness(1); }
-      50% { filter: brightness(1.12); }
-    }
-    .screen-content {
-      position: absolute;
-      inset: 0;
-      z-index: 2;
-      border-radius: inherit;
-      overflow: hidden;
-    }
-    .cam {
-      width: 100%;
-      height: 100%;
-      display: grid;
-      place-items: center;
-      text-align: center;
-      color: #fff;
-      font-weight: 900;
-      font-size: clamp(0.95rem, 2.2vw, 1.25rem);
-      text-shadow: 0 2px 8px rgba(0,40,80,.4);
-      background:
-        radial-gradient(circle at 50% 42%, rgba(255,255,255,.32), transparent 55%),
-        linear-gradient(160deg, rgba(30,136,229,.45), rgba(21,101,192,.55)),
-        linear-gradient(180deg, #64B5F6, #1E88E5);
-      position: relative;
-    }
-    .cam.live {
-      background: #0a1a33;
-    }
-    .cam .cam-placeholder { z-index: 1; }
-    /* Full-bleed hub stream (raw or annotated) — never a PiP secondary feed */
-    .cam img#espCam {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      opacity: 1;
-      z-index: 2;
-      transform: none;
-      background: #0a1a33;
-    }
-    /* Live cam upright when flip-v is on (silent — no on-screen caption) */
-    .cam.flip-v img#espCam { transform: scaleY(-1); }
-    .cam.flip-180 img#espCam { transform: rotate(180deg); }
-    .bezel-cam.flip-v { transform: translateX(-50%) scaleY(-1); }
-    .cam.live img#espCam { opacity: 1; }
-    .cam.live .cam-placeholder { display: none; }
-    .crest.dim { opacity: .18; }
-    .crest {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      pointer-events: none;
-      opacity: .18;
-      z-index: 0;
-    }
-    .crest svg { width: min(38%, 200px); height: auto; }
-
-    /* ===== RED CONSOLE DESK ===== */
-    .console { margin-top: 4px; position: relative; z-index: 2; }
-    .desk-top {
-      background: linear-gradient(180deg, #FF6B63 0%, var(--spidey-red) 40%, var(--spidey-red-deep) 100%);
-      border-radius: 0 0 46% 46% / 0 0 36% 36%;
-      border: 4px solid #8B1E1C;
-      border-top: 0;
-      box-shadow: 0 12px 0 #9E2A28, 0 20px 26px rgba(40,70,110,.25), inset 0 8px 14px rgba(255,255,255,.22);
-      padding: 14px 16px 26px;
-    }
-    .desk-base {
-      height: 48px;
-      margin: -6px 14% 0;
-      background:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='3'%3E%3Cpath d='M10 50 Q60 5 110 50'/%3E%3Cpath d='M25 50 Q60 18 95 50'/%3E%3Cpath d='M40 50 Q60 28 80 50'/%3E%3Cline x1='60' y1='8' x2='60' y2='50'/%3E%3C/g%3E%3C/svg%3E")
-        center / 100% 100% no-repeat,
-        linear-gradient(180deg, #F2F7FC, #D9E8F5);
-      border-radius: 0 0 40% 40% / 0 0 60% 60%;
-      border: 3px solid #C5D8EA;
-      border-top: 0;
-    }
-    .desk-legs {
-      display: flex;
-      justify-content: space-between;
-      padding: 0 18%;
-      margin-top: -2px;
-    }
-    .desk-legs span {
-      width: 26px; height: 20px;
-      background: linear-gradient(180deg, #5A7A98, #3D556C);
-      border-radius: 0 0 8px 8px;
-    }
-
-    .desk-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .desk-drive {
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      gap: 12px;
-      align-items: center;
-    }
-    .desk-comms {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    @media (max-width: 700px) {
-      .desk-drive, .desk-comms { grid-template-columns: 1fr; justify-items: center; }
-      .desk-comms > * { width: 100%; }
-    }
-
-    .holos { display: flex; flex-direction: column; gap: 8px; }
-    .holo {
-      min-width: 112px;
-      padding: 7px 10px;
-      border-radius: 12px;
-      text-align: center;
-      background: linear-gradient(180deg, rgba(180,240,255,.6), rgba(30,136,229,.28));
-      border: 2px solid rgba(255,255,255,.8);
-      box-shadow: 0 0 14px rgba(30,136,229,.45);
-      color: #063A5C;
-    }
-    .holo .name { font-size: .62rem; font-weight: 900; text-transform: uppercase; letter-spacing: .5px; }
-    .holo .val {
-      font-family: var(--display);
-      font-size: 1.55rem;
-      font-weight: 900;
-      color: var(--web-blue-deep);
-      text-shadow: 0 0 8px rgba(100,200,255,.9);
-      line-height: 1;
-    }
-    .holo .unit { font-size: .6rem; font-weight: 800; opacity: .7; }
-
-    .pads-wrap { text-align: center; }
-    .pads-wrap .label {
-      margin: 0 0 6px;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .82rem;
-      color: #fff;
-      text-transform: uppercase;
-      text-shadow: 0 1px 0 rgba(0,0,0,.25);
-    }
-    .pads {
-      display: grid;
-      grid-template-areas: ". w ." "a s d";
-      grid-template-columns: repeat(3, 58px);
-      gap: 8px;
-      justify-content: center;
-      user-select: none;
-    }
-    .pad {
-      width: 58px; height: 58px;
-      border-radius: 50%;
-      border: 3px solid #fff;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: 1.2rem;
-      color: #fff;
-      cursor: pointer;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.35), transparent 45%),
-                  linear-gradient(165deg, #FF6A4A, var(--spidey-red-deep));
-      box-shadow: 0 5px 0 #6D1412, inset 0 -5px 0 rgba(0,0,0,.18);
-      transition: transform .08s, box-shadow .08s;
-    }
-    .pad[data-key="w"] { grid-area: w; }
-    .pad[data-key="s"] { grid-area: s; }
-    .pad[data-key="a"], .pad[data-key="d"] {
-      background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.35), transparent 45%),
-                  linear-gradient(165deg, #64B5F6, var(--web-blue-deep));
-      box-shadow: 0 5px 0 #0D3A6E, inset 0 -5px 0 rgba(0,0,0,.18);
-    }
-    .pad.active, .pad:active {
-      transform: translateY(4px);
-      box-shadow: 0 1px 0 #6D1412;
-    }
-    .hint { margin: 6px 0 0; font-size: .68rem; font-weight: 800; color: rgba(255,255,255,.85); }
-
-    .follow-panel {
-      margin-top: 12px;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 3px solid rgba(255,255,255,.95);
-      background: linear-gradient(165deg, rgba(30,136,229,.35), rgba(229,57,53,.28));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
-    }
-    .follow-panel .follow-title {
-      margin: 0 0 4px;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .95rem;
-      color: #fff;
-      text-transform: uppercase;
-      letter-spacing: .4px;
-      text-shadow: 0 1px 0 rgba(0,0,0,.25);
-    }
-    .follow-panel .follow-sub {
-      margin: 0 0 8px;
-      font-size: .68rem;
-      font-weight: 700;
-      color: rgba(255,255,255,.88);
-    }
-    .follow-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-    .follow-btn {
-      border: 3px solid #fff;
-      border-radius: 999px;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .82rem;
-      padding: 7px 14px;
-      cursor: pointer;
-      text-transform: uppercase;
-      color: #fff;
-      background: linear-gradient(165deg, #64B5F6, var(--web-blue-deep));
-      box-shadow: 0 3px 0 #0D3A6E;
-    }
-    .follow-btn.stop {
-      background: linear-gradient(165deg, #FF6A4A, var(--spidey-red-deep));
-      box-shadow: 0 3px 0 #6D1412;
-    }
-    .follow-btn.human {
-      min-width: 2.6rem;
-      padding: 7px 10px;
-      background: linear-gradient(165deg, #81C784, #2E7D32);
-      box-shadow: 0 3px 0 #1B5E20;
-    }
-    .follow-btn.human[aria-pressed="true"] {
-      outline: 2px solid var(--spin-yellow);
-      filter: saturate(1.25) brightness(1.08);
-    }
-    .follow-btn[aria-pressed="true"] {
-      filter: saturate(1.2) brightness(1.05);
-      outline: 2px solid var(--spin-yellow);
-    }
-    .follow-note {
-      margin: 8px 0 0;
-      font-size: .7rem;
-      font-weight: 800;
-      color: rgba(255,255,255,.92);
-      min-height: 1.2em;
-    }
-    /* Nav boxes/HUD are burned into the main /api/esp/stream (annotate) feed */
-    .cam.nav-on {
-      outline: 3px solid #FFEB3B;
-      outline-offset: -3px;
-    }
-    .cam-nav-hud {
-      position: absolute;
-      left: 8px;
-      top: 8px;
-      z-index: 6;
-      display: none;
-      pointer-events: none;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .72rem;
-      letter-spacing: .3px;
-      text-transform: uppercase;
-      color: #fff;
-      text-shadow: 0 1px 2px rgba(0,0,0,.65);
-      background: rgba(0,0,0,.55);
-      border: 2px solid rgba(255,235,59,.95);
-      border-radius: 10px;
-      padding: 6px 10px;
-      line-height: 1.35;
-      max-width: min(92%, 340px);
-    }
-    .cam.nav-on .cam-nav-hud { display: block; }
-    .follow-sensors {
-      margin: 6px 0 0;
-      font-size: .68rem;
-      font-weight: 800;
-      color: rgba(255,255,255,.92);
-      min-height: 1.1em;
-    }
-    .follow-panel.nav-live {
-      border-color: #FFEB3B;
-      box-shadow: 0 0 0 2px rgba(255,235,59,.35), inset 0 1px 0 rgba(255,255,255,.35);
-    }
-
-    .gestures-btn {
-      margin-top: 10px;
-      border: 3px solid #fff;
-      border-radius: 14px;
-      background: linear-gradient(180deg, #FFE082, var(--spin-yellow) 45%, #F9A825);
-      color: var(--ink);
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .88rem;
-      padding: 8px 18px;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: .4px;
-      box-shadow: 0 4px 0 #C27800, inset 0 2px 0 rgba(255,255,255,.55);
-      transition: transform .08s, box-shadow .08s, filter .15s;
-    }
-    .gestures-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #C27800; }
-    .gestures-btn[aria-pressed="true"] {
-      background: linear-gradient(180deg, #64B5F6, var(--web-blue-deep));
-      color: #fff;
-      box-shadow: 0 4px 0 #0D3A6E, inset 0 2px 0 rgba(255,255,255,.35);
-      filter: saturate(1.1);
-    }
-
-    /* Gestures shortcut overlay — all non-WASD keys */
-    .gestures-overlay {
-      display: none;
-      position: absolute;
-      left: 10px;
-      right: 10px;
-      bottom: calc(100% - 8px);
-      z-index: 20;
-      pointer-events: none;
-    }
-    .gestures-overlay.open {
-      display: block;
-      pointer-events: auto;
-      animation: gesturePop .22s ease-out;
-    }
-    @keyframes gesturePop {
-      from { opacity: 0; transform: translateY(10px) scale(.97); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    .gestures-panel {
-      background: linear-gradient(180deg, rgba(12,40,70,.94), rgba(21,101,192,.92));
-      border: 3px solid #fff;
-      border-radius: 18px;
-      padding: 12px 14px 14px;
-      box-shadow: 0 12px 28px rgba(10,40,80,.45), inset 0 1px 0 rgba(255,255,255,.25);
-      color: #fff;
-    }
-    .gestures-panel h3 {
-      margin: 0 0 4px;
-      font-family: var(--display);
-      font-size: .95rem;
-      font-weight: 900;
-      text-transform: uppercase;
-      text-align: center;
-      letter-spacing: .5px;
-    }
-    .gestures-panel .sub {
-      margin: 0 0 10px;
-      font-size: .65rem;
-      font-weight: 800;
-      text-align: center;
-      opacity: .85;
-    }
-    .gesture-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-      gap: 7px;
-    }
-    .gkey {
-      border: 2px solid rgba(255,255,255,.85);
-      border-radius: 10px;
-      background: rgba(255,255,255,.12);
-      padding: 6px 4px 5px;
-      text-align: center;
-      cursor: pointer;
-      transition: background .12s, transform .08s, box-shadow .12s;
-      box-shadow: 0 2px 0 rgba(0,0,0,.25);
-      font: inherit;
-      color: #fff;
-    }
-    .gkey:hover, .gkey:focus-visible {
-      background: rgba(255,255,255,.22);
-      outline: none;
-    }
-    .gkey.active, .gkey:active {
-      background: linear-gradient(180deg, var(--spin-yellow), #F9A825);
-      color: var(--ink);
-      transform: translateY(2px);
-      box-shadow: 0 0 0 rgba(0,0,0,.2), 0 0 12px rgba(255,213,79,.55);
-    }
-    .gkey .k {
-      display: block;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .95rem;
-      line-height: 1.1;
-    }
-    .gkey .desc {
-      display: block;
-      font-size: .55rem;
-      font-weight: 800;
-      opacity: .85;
-      margin-top: 2px;
-      text-transform: uppercase;
-      letter-spacing: .2px;
-    }
-    .gkey.active .desc { opacity: .75; }
-    .gestures-drive-note {
-      margin: 10px 0 0;
-      text-align: center;
-      font-size: .62rem;
-      font-weight: 800;
-      opacity: .8;
-    }
-    .gestures-drive-note strong {
-      color: var(--spin-yellow);
-      font-weight: 900;
-    }
-    body.gestures-on .pads-wrap .label::after {
-      content: " · drive only";
-      font-size: .7em;
-      opacity: .85;
-    }
-    body.gestures-on .pad {
-      outline: 2px dashed rgba(255,255,255,.35);
-      outline-offset: 2px;
-    }
-
-    .speak-panel {
-      background: rgba(255,255,255,.18);
-      border: 2px solid rgba(255,255,255,.45);
-      border-radius: 14px;
-      padding: 9px;
-    }
-    .speak-panel + .speak-panel { margin-top: 8px; }
-    .speak-panel.talk-to {
-      border-color: rgba(255,213,79,.75);
-      background: rgba(255,213,79,.16);
-    }
-    .speak-panel.talk-through {
-      border-color: rgba(100,181,246,.85);
-      background: rgba(30,136,229,.22);
-    }
-    .speak-panel label {
-      display: block;
-      font-family: var(--display);
-      font-weight: 900;
-      font-size: .75rem;
-      color: #fff;
-      text-transform: uppercase;
-      margin-bottom: 5px;
-    }
-    .speak-panel .sublabel {
-      display: block;
-      margin: -2px 0 6px;
-      font-size: .58rem;
-      font-weight: 800;
-      color: rgba(255,255,255,.82);
-      text-transform: none;
-      line-height: 1.25;
-    }
-    .hq-field {
-      flex: 1;
-      min-width: 0;
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 7px 12px;
-      font: inherit;
-      font-weight: 700;
-      font-size: .82rem;
-      background: rgba(255,255,255,.94);
-      color: var(--ink);
-      outline: none;
-    }
-    .tts-row { display: flex; gap: 6px; flex-wrap: wrap; }
-    .tts-row input {
-      flex: 1 1 90px;
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 7px 11px;
-      font: inherit;
-      font-weight: 700;
-      font-size: .82rem;
-      background: rgba(255,255,255,.94);
-      outline: none;
-    }
-    .tts-row select {
-      flex: 0 1 180px;
-      max-width: 100%;
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 7px 10px;
-      font: inherit;
-      font-weight: 700;
-      font-size: .72rem;
-      background: rgba(255,255,255,.94);
-      color: #1A2430;
-      outline: none;
-      cursor: pointer;
-    }
-    .tts-row button {
-      border: 2px solid #fff;
-      border-radius: 999px;
-      background: linear-gradient(180deg, #64B5F6, var(--web-blue));
-      color: #fff;
-      font-family: var(--display);
-      font-weight: 900;
-      padding: 7px 12px;
-      cursor: pointer;
-      box-shadow: 0 3px 0 #0A5F8A;
-      text-transform: uppercase;
-      font-size: .78rem;
-    }
-    .speak-panel.talk-to .tts-row button {
-      background: linear-gradient(180deg, #FFE082, #FFD54F);
-      color: #1A2430;
-      box-shadow: 0 3px 0 #C9A227;
-    }
-    .tts-row button:active { transform: translateY(2px); box-shadow: 0 1px 0 #0A5F8A; }
-    .tts-note { margin: 5px 0 0; font-size: .62rem; font-weight: 800; color: rgba(255,255,255,.8); }
-    .esp-ip-row {
-      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-      margin-top: 8px;
-    }
-    .esp-ip-row input {
-      flex: 1 1 120px;
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 5px 10px;
-      font-weight: 700;
-      font-size: .72rem;
-    }
-    .esp-ip-row button {
-      border: 2px solid #fff;
-      border-radius: 999px;
-      background: rgba(255,255,255,.25);
-      color: #fff;
-      font-weight: 900;
-      font-size: .7rem;
-      padding: 5px 10px;
-      cursor: pointer;
-    }
-
-    .status {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-      justify-content: center;
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(255,255,255,.75);
-      border: 2px solid #fff;
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-weight: 800;
-      font-size: .7rem;
-      color: var(--web-blue-deep);
-    }
-    .led {
-      width: 9px; height: 9px;
-      border-radius: 50%;
-      background: #2EBB4F;
-      box-shadow: 0 0 6px #2EBB4F;
-    }
-    .led.warn { background: var(--spin-yellow); box-shadow: 0 0 6px var(--spin-yellow); }
-
-    .ref-card {
-      position: sticky;
-      top: 10px;
-      background: rgba(255,255,255,.6);
-      border: 3px solid #fff;
-      border-radius: 16px;
-      padding: 7px;
-      box-shadow: 0 8px 18px rgba(40,90,140,.16);
-    }
-    .ref-card img {
-      width: 100%;
-      border-radius: 10px;
-      border: 2px solid var(--frame-red);
-      display: block;
-    }
-    .ref-card p {
-      margin: 6px 2px 0;
-      font-size: .62rem;
-      font-weight: 800;
-      color: var(--web-blue-deep);
-      text-align: center;
-      line-height: 1.25;
-    }
-
-    footer {
-      text-align: center;
-      margin-top: 12px;
-      font-weight: 800;
-      font-size: .7rem;
-      color: var(--web-blue-deep);
-      opacity: .75;
-    }
-
-    /* Soft corner cobwebs only — kept off the speakers / screen center */
-    .cobweb-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 40;
-      pointer-events: none;
-      opacity: .14;
-      background:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='240' viewBox='0 0 280 240'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1' stroke-opacity='0.55'%3E%3Cpath d='M0 0 L140 0 L0 120 Z'/%3E%3Cpath d='M0 0 L90 0 M0 0 L0 80'/%3E%3Cpath d='M20 0 Q40 40 0 55 M50 0 Q70 50 0 90'/%3E%3C/g%3E%3C/svg%3E")
-        0% 0% / 220px 190px no-repeat,
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='220' viewBox='0 0 260 220'%3E%3Cg fill='none' stroke='%23F5FBFF' stroke-width='1' stroke-opacity='0.5'%3E%3Cpath d='M260 0 L120 0 L260 110 Z'/%3E%3Cpath d='M260 0 L170 0 M260 0 L260 70'/%3E%3Cpath d='M240 0 Q220 35 260 50 M210 0 Q190 45 260 85'/%3E%3C/g%3E%3C/svg%3E")
-        100% 0% / 200px 170px no-repeat;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>WEB-QUARTERS! TRACE-E's Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/webquarters.css" />
 </head>
-<body>
-  <div class="cobweb-overlay" aria-hidden="true"></div>
-  <div class="hq">
-    <div class="topbar">
-      <h1>WEB-QUARTERS · TRACE-E</h1>
-      <div class="team-mini" aria-label="Team Spidey">
-        <img class="spidey" src="assets/spidey.jpg" alt="Spidey" />
-        <img class="ghost" src="assets/ghost_spider.jpg" alt="Ghost-Spider" />
-        <img class="spin" src="assets/spin.jpg" alt="Spin" />
-      </div>
-    </div>
+<body class="asleep">
+<div class="web-overlay"></div>
+<div class="corner-web tl"></div>
+<div class="corner-web tr"></div>
 
-    <div class="stage">
-      <div>
-        <!-- Speakers + curved screen -->
-        <div class="screen-row">
-          <div class="speaker left" aria-label="Left blue speaker panel" title="WEB-Quarters speaker">
-            <svg class="speaker-svg" viewBox="0 0 100 300" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <pattern id="spkStripeL" width="100" height="62" patternUnits="userSpaceOnUse">
-                  <rect width="100" height="16" fill="#0B3A6E"/>
-                  <rect y="16" width="100" height="12" fill="#1565C0"/>
-                  <rect y="28" width="100" height="8" fill="#42A5F5"/>
-                  <rect y="36" width="100" height="8" fill="#0D47A1"/>
-                  <rect y="44" width="100" height="8" fill="#90CAF9"/>
-                  <rect y="52" width="100" height="10" fill="#083056"/>
-                </pattern>
-              </defs>
-              <!-- Smooth wing: flat edge at screen join (x=100), curve faces outward -->
-              <path d="M100 58
-                       L100 242
-                       C90 258, 68 278, 42 270
-                       C18 260, 2 230, 4 190
-                       C6 165, 0 150, 4 130
-                       C2 95, 10 62, 34 42
-                       C52 30, 78 36, 100 58 Z"
-                    fill="url(#spkStripeL)" stroke="#083056" stroke-width="2.8" stroke-linejoin="round"/>
-              <path d="M84 72 C64 56, 42 62, 28 84 C16 110, 14 140, 20 164
-                       C16 190, 22 220, 38 240 C54 254, 74 252, 84 238"
-                    fill="none" stroke="#fff" stroke-width="2.2" stroke-opacity=".22"/>
-            </svg>
-            <div class="drivers" aria-hidden="true">
-              <span class="driver"></span>
-              <span class="driver"></span>
-              <span class="driver"></span>
-              <span class="driver"></span>
-            </div>
-          </div>
-
-          <div class="big-screen" aria-label="Web-Quarters main control screen">
-            <div class="screen-shell"></div>
-            <div class="bezel-cam" aria-hidden="true" title="Bezel camera"></div>
-            <div class="screen-blue-border" aria-hidden="true"></div>
-            <div class="screen-bezel">
-              <div class="web-lines" aria-hidden="true"></div>
-              <div class="screen-content">
-                <div class="cam-label">● LIVE CAM</div>
-                <div class="crest" id="crest" aria-hidden="true">
-                  <svg viewBox="0 0 200 200">
-                    <path d="M100 18 L168 58 L100 100 Z" fill="#7B5EA7"/>
-                    <path d="M32 58 L100 100 L100 182 L32 142 Z" fill="#E53935"/>
-                    <path d="M168 58 L100 100 L100 182 L168 142 Z" fill="#1A1A1A"/>
-                    <path d="M100 18 L168 58 L168 142 L100 182 L32 142 L32 58 Z"
-                          fill="none" stroke="#fff" stroke-width="6"/>
-                  </svg>
-                </div>
-                <div class="cam" id="camBox" role="img" aria-label="Live camera">
-                  <img id="espCam" alt="" />
-                  <div class="cam-placeholder">WEB-STER LIVE VIEW<br />
-                    <span style="font-size:.85em;opacity:.9">Swing into the mission…</span>
-                  </div>
-                  <div class="cam-nav-hud" id="camNavHud" aria-live="polite">Nav idle</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="speaker right" aria-label="Right blue speaker panel" title="WEB-Quarters speaker">
-            <svg class="speaker-svg" viewBox="0 0 100 300" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <pattern id="spkStripeR" width="100" height="62" patternUnits="userSpaceOnUse">
-                  <rect width="100" height="16" fill="#0B3A6E"/>
-                  <rect y="16" width="100" height="12" fill="#1565C0"/>
-                  <rect y="28" width="100" height="8" fill="#42A5F5"/>
-                  <rect y="36" width="100" height="8" fill="#0D47A1"/>
-                  <rect y="44" width="100" height="8" fill="#90CAF9"/>
-                  <rect y="52" width="100" height="10" fill="#083056"/>
-                </pattern>
-              </defs>
-              <!-- Smooth wing: flat edge at screen join (x=0), curve faces outward -->
-              <path d="M0 58
-                       L0 242
-                       C10 258, 32 278, 58 270
-                       C82 260, 98 230, 96 190
-                       C94 165, 100 150, 96 130
-                       C98 95, 90 62, 66 42
-                       C48 30, 22 36, 0 58 Z"
-                    fill="url(#spkStripeR)" stroke="#083056" stroke-width="2.8" stroke-linejoin="round"/>
-              <path d="M16 72 C36 56, 58 62, 72 84 C84 110, 86 140, 80 164
-                       C84 190, 78 220, 62 240 C46 254, 26 252, 16 238"
-                    fill="none" stroke="#fff" stroke-width="2.2" stroke-opacity=".22"/>
-            </svg>
-            <div class="drivers" aria-hidden="true">
-              <span class="driver"></span>
-              <span class="driver"></span>
-              <span class="driver"></span>
-              <span class="driver"></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Red desk controls -->
-        <div class="console">
-          <div class="desk-top">
-            <div class="desk-grid">
-              <div class="desk-drive">
-              <div class="holos">
-                <div class="holo">
-                  <div class="name">Left Motor · LM</div>
-                  <div class="val" id="lm">0</div>
-                  <div class="unit">speed %</div>
-                </div>
-                <div class="holo">
-                  <div class="name">Right Motor · RM</div>
-                  <div class="val" id="rm">0</div>
-                  <div class="unit">speed %</div>
-                </div>
-              </div>
-
-              <div class="pads-wrap" style="position:relative">
-                <div id="gesturesOverlay" class="gestures-overlay" aria-hidden="true">
-                  <div class="gestures-panel" role="dialog" aria-label="HQ shortcuts">
-                    <h3>HQ Keys</h3>
-                    <p class="sub">Working shortcuts only · WASD always drives</p>
-                    <div class="gesture-grid" id="gestureKeys">
-                      <button type="button" class="gkey" data-g="e" title="Speak"><span class="k">E</span><span class="desc">Speak</span></button>
-                      <button type="button" class="gkey" data-g=" " title="Speak"><span class="k">Space</span><span class="desc">Speak</span></button>
-                      <button type="button" class="gkey" data-g="x" title="Emergency stop"><span class="k">X</span><span class="desc">Stop</span></button>
-                      <button type="button" class="gkey" data-g="Escape" title="Halt"><span class="k">Esc</span><span class="desc">Halt</span></button>
-                      <button type="button" class="gkey" data-g="Enter" title="Send speak line"><span class="k">↵</span><span class="desc">Send</span></button>
-                    </div>
-                    <p class="gestures-drive-note"><strong>WASD</strong> = drive · cover front sensor to talk on Trace</p>
-                  </div>
-                </div>
-                <p class="label">Web Drive · WASD</p>
-                <div class="pads" id="pads">
-                  <button type="button" class="pad" data-key="w" aria-label="Forward W">W</button>
-                  <button type="button" class="pad" data-key="a" aria-label="Left A">A</button>
-                  <button type="button" class="pad" data-key="s" aria-label="Back S">S</button>
-                  <button type="button" class="pad" data-key="d" aria-label="Right D">D</button>
-                </div>
-                <button type="button" class="gestures-btn" id="gesturesBtn" aria-pressed="false" aria-controls="gesturesOverlay">
-                  Keys
-                </button>
-                <p class="hint">Hold pads or keyboard · Keys = Speak / Stop</p>
-              </div>
-
-              <div class="holos desk-tip">
-                <div class="holo">
-                  <div class="name">Cover sensor</div>
-                  <div class="val" style="font-size:1rem;line-height:1.15">Talk</div>
-                  <div class="unit">Trace mic listens</div>
-                </div>
-                <div class="holo">
-                  <div class="name">Nav ON</div>
-                  <div class="val" style="font-size:1rem;line-height:1.15">Follow</div>
-                  <div class="unit">cam + bumper</div>
-                </div>
-              </div>
-              </div>
-
-              <div class="desk-comms">
-              <div class="speak-panel talk-to">
-                <label for="talkToText">Talk to Trace</label>
-                <span class="sublabel">Chat · Trace answers on her amp</span>
-                <div class="tts-row">
-                  <input id="talkToText" type="text" maxlength="160"
-                    placeholder="Hey Trace-E, status check!" value="" />
-                  <button type="button" id="talkToBtn">Send</button>
-                </div>
-                <p class="tts-note" id="talkToNote">Waiting…</p>
-              </div>
-
-              <div class="speak-panel talk-through">
-                <label for="ttsText">Speak through Trace</label>
-                <span class="sublabel">Your words · Peanut Ana voice · her amp</span>
-                <div class="tts-row">
-                  <input id="ttsText" type="text" maxlength="120"
-                    placeholder="Hey Ollie — webs up!" value="Hey Ollie, webs up!" />
-                  <select id="ttsEngine" title="Voice engine" aria-label="Voice engine">
-                    <option value="peanut-auto" selected>Peanut auto</option>
-                    <option value="ana">Ana</option>
-                    <option value="groq">Groq</option>
-                    <option value="gemini">Gemini</option>
-                  </select>
-                  <button type="button" id="speakBtn">Say!</button>
-                </div>
-                <p class="tts-note" id="speakNote">Voice → Trace amp</p>
-              </div>
-              </div>
-
-              <div class="follow-panel" id="followPanel">
-                <p class="follow-title">Mission · Follow &amp; Listen</p>
-                <p class="follow-sub">Cam + bumper + Trace mic · cover front sensor to talk</p>
-                <div class="follow-row">
-                  <button type="button" class="follow-btn" id="followStartBtn" aria-pressed="false">Nav ON</button>
-                  <button type="button" class="follow-btn stop" id="followStopBtn">Stop</button>
-                  <button type="button" class="follow-btn human" id="human1Btn" title="Follow Human 1">H1</button>
-                  <button type="button" class="follow-btn human" id="human2Btn" title="Follow Human 2">H2</button>
-                  <button type="button" class="follow-btn human" id="listenBtn" title="Start listening">Talk</button>
-                  <span class="pill" id="followPill">Nav: idle</span>
-                </div>
-                <p class="follow-sensors" id="followSensors">Sensors: —</p>
-                <p class="follow-note" id="followNote">Cover sensor to talk · Trace mic + amp</p>
-                <p class="follow-note" id="listenNote" style="opacity:.9">Listen: idle</p>
-                <div class="follow-row" style="margin-top:.35rem">
-                  <input id="musicQuery" class="hq-field" type="text" maxlength="80" placeholder="song for Ollie (YouTube)" />
-                  <button type="button" class="follow-btn human" id="musicBtn">Play</button>
-                </div>
-                <p class="follow-note" id="musicNote" style="opacity:.85">Music: idle</p>
-              </div>
-
-              <div class="esp-ip-row" title="ESP base URL">
-                <input id="espIpInput" type="text" spellcheck="false" placeholder="http://192.168.1.104" />
-                <button type="button" id="espSaveBtn">Set ESP</button>
-                <button type="button" id="camFlipBtn" aria-pressed="true" title="Flip camera">Flip cam: ON</button>
-                <button type="button" id="chirpsBtn" aria-pressed="false" title="Cycle chirp mode: Off / Situational / Random">Chirps: Off</button>
-              </div>
-            </div>
-          </div>
-          <div class="desk-base" aria-hidden="true"></div>
-          <div class="desk-legs" aria-hidden="true"><span></span><span></span></div>
-        </div>
-
-        <div class="status">
-          <span class="pill"><span class="led"></span> WEB-Quarters online</span>
-          <span class="pill" id="motorPill"><span class="led" id="motorLed"></span> Motors: idle</span>
-          <span class="pill" id="camPill"><span class="led warn" id="camLed"></span> Cam: searching…</span>
-          <span class="pill" id="espPill">ESP: —</span>
-          <span class="pill" id="driveStatus">Drive: —</span>
-        </div>
-      </div>
-
-      <aside class="ref-card">
-        <img src="assets/hq_refs/web_quarters_screen.png" alt="In-show WEB-Quarters screen" />
-        <p>WEB-STER<br />in-show look</p>
-      </aside>
-    </div>
-
-    <footer>WEB-Quarters HQ · Trace-E · drive · follow · talk · songs</footer>
+<header class="topbar">
+  <div class="show-banner">
+    <span class="banner-web left"></span>
+    <span class="faces-logo">
+      <span class="face-row">
+        <img class="hero hero-photo"
+             src="https://static.wikia.nocookie.net/spidey-and-his-amazing-friends/images/6/66/Spidey_Transparent.png/revision/latest"
+             alt="Spidey" onerror="this.style.display='none'"/>
+        <img class="hero hero-photo"
+             src="https://static.wikia.nocookie.net/spidey-and-his-amazing-friends/images/6/6f/Ghost_Spider_Transparent.png/revision/latest"
+             alt="Ghost-Spider" onerror="this.style.display='none'"/>
+        <img class="hero hero-photo"
+             src="https://static.wikia.nocookie.net/spidey-and-his-amazing-friends/images/e/ea/Spin_Transparent.png/revision/latest"
+             alt="Spin" onerror="this.style.display='none'"/>
+        <img class="hero hero-photo"
+             src="https://static.wikia.nocookie.net/spidey-and-his-amazing-friends/images/d/d9/Trace-e.jpg/revision/latest"
+             alt="TRACE-E" onerror="this.style.display='none'"/>
+      </span>
+      <span class="logo-overlay">
+        <span class="banner-main">SPIDEY AND HIS</span>
+        <span class="banner-main big">AMAZING FRIENDS</span>
+      </span>
+    </span>
+    <span class="banner-web right"></span>
   </div>
 
-  <script>
-    const keys = new Set();
-    const pads = [...document.querySelectorAll('.pad')];
-    const gKeys = [...document.querySelectorAll('.gkey')];
-    const lm = document.getElementById('lm');
-    const rm = document.getElementById('rm');
-    const driveStatus = document.getElementById('driveStatus');
-    const speakBtn = document.getElementById('speakBtn');
-    const ttsText = document.getElementById('ttsText');
-    const ttsEngine = document.getElementById('ttsEngine');
-    const speakNote = document.getElementById('speakNote');
-    const talkToBtn = document.getElementById('talkToBtn');
-    const talkToText = document.getElementById('talkToText');
-    const talkToNote = document.getElementById('talkToNote');
-    const espIpInput = document.getElementById('espIpInput');
-    const espSaveBtn = document.getElementById('espSaveBtn');
-    const camFlipBtn = document.getElementById('camFlipBtn');
-    const chirpsBtn = document.getElementById('chirpsBtn');
-    const gesturesBtn = document.getElementById('gesturesBtn');
-    const gesturesOverlay = document.getElementById('gesturesOverlay');
-    const camBox = document.getElementById('camBox');
-    const bezelCam = document.querySelector('.bezel-cam');
-    const espCam = document.getElementById('espCam');
-    const crest = document.getElementById('crest');
-    const camPill = document.getElementById('camPill');
-    const camLed = document.getElementById('camLed');
-    const motorPill = document.getElementById('motorPill');
-    const motorLed = document.getElementById('motorLed');
-    const espPill = document.getElementById('espPill');
-    const followStartBtn = document.getElementById('followStartBtn');
-    const followStopBtn = document.getElementById('followStopBtn');
-    const human1Btn = document.getElementById('human1Btn');
-    const human2Btn = document.getElementById('human2Btn');
-    const followNote = document.getElementById('followNote');
-    const followPill = document.getElementById('followPill');
-    const followPanel = document.getElementById('followPanel');
-    const followSensors = document.getElementById('followSensors');
-    const camNavHud = document.getElementById('camNavHud');
-    let followOn = false;
-    let followPoll = null;
-    let followTargetId = null;
-    let lastFollowRunning = null;
+  <div class="topbar-row">
+    <div class="brand">
+      <div class="spidey-emblem">
+        <svg viewBox="0 0 64 64" width="58" height="58" aria-hidden="true">
+          <circle cx="32" cy="32" r="30" fill="#e11d2e" stroke="#12142b" stroke-width="3"/>
+          <g stroke="#12142b" stroke-width="2" fill="none">
+            <path d="M32 2 V62 M2 32 H62 M11 11 L53 53 M53 11 L11 53"/>
+            <circle cx="32" cy="32" r="12"/><circle cx="32" cy="32" r="22"/>
+          </g>
+          <ellipse cx="26" cy="30" rx="6" ry="9" fill="#fff" stroke="#12142b" stroke-width="2" transform="rotate(-12 26 30)"/>
+          <ellipse cx="38" cy="30" rx="6" ry="9" fill="#fff" stroke="#12142b" stroke-width="2" transform="rotate(12 38 30)"/>
+        </svg>
+      </div>
+      <h1>WEB-QUARTERS!</h1>
+    </div>
 
-    const params = new URLSearchParams(location.search);
-    const BRAIN = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '')
-      || ((location.port === '8788') ? '' : 'http://192.168.1.105:8788');
-    const ESP_DEFAULT = params.get('esp') || 'http://192.168.1.102';
-    let espBase = ESP_DEFAULT.replace(/\/$/, '');
-    let lastLR = [0, 0];
-    let driveOk = false;
-    let wasMoving = false;
-    if (espIpInput) espIpInput.value = espBase;
-    try { localStorage.setItem('trace_e_esp', espBase); } catch (_) {}
+    <div class="status-face" id="statusFace">
+      <svg viewBox="0 0 90 74" width="62" height="52" aria-hidden="true">
+        <ellipse cx="45" cy="38" rx="40" ry="34" fill="#e11d2e" stroke="#12142b" stroke-width="3"/>
+        <ellipse cx="31" cy="36" rx="12" ry="14" fill="#0c0e24" transform="rotate(-8 31 36)"/>
+        <ellipse cx="59" cy="36" rx="12" ry="14" fill="#0c0e24" transform="rotate(8 59 36)"/>
+        <ellipse class="face-pupil" cx="31" cy="36" rx="8" ry="10" fill="#38c6ff" transform="rotate(-8 31 36)"/>
+        <ellipse class="face-pupil" cx="59" cy="36" rx="8" ry="10" fill="#38c6ff" transform="rotate(8 59 36)"/>
+      </svg>
+      <span class="status-word" id="statusWord">OFFLINE</span>
+    </div>
 
-    const CANDIDATE_IPS = [
-      '192.168.1.104', '192.168.1.105', '192.168.1.106', '192.168.1.102',
-      '192.168.1.100', '192.168.1.101', '192.168.1.103', '192.168.1.110',
-    ];
+    <button class="gear-btn" id="btnGear" type="button" title="Grown-Ups Only">⚙️</button>
+  </div>
+</header>
 
-    // Cam flip: off | v (scaleY) | 180 — default v (upright Freenove FPC)
-    const CAM_FLIP_MODES = ['off', 'v', '180'];
-    let camFlip = localStorage.getItem('trace_e_cam_flip') || 'v';
-    if (!CAM_FLIP_MODES.includes(camFlip)) camFlip = 'v';
+<main class="stage">
+  <div class="screen-frame">
+    <div class="screen-bolts"><i></i><i></i><i></i><i></i></div>
+    <div class="screen-title">SPIDER-CAM</div>
 
-    function applyCamFlip() {
-      if (!camBox) return;
-      camBox.classList.remove('flip-v', 'flip-180');
-      if (bezelCam) bezelCam.classList.remove('flip-v');
-      if (camFlip === 'v') {
-        camBox.classList.add('flip-v');
-        if (bezelCam) bezelCam.classList.add('flip-v');
-      } else if (camFlip === '180') {
-        camBox.classList.add('flip-180');
-      }
-      if (camFlipBtn) {
-        const label = camFlip === 'off' ? 'OFF' : (camFlip === '180' ? '180°' : 'ON');
-        camFlipBtn.textContent = 'Flip cam: ' + label;
-        camFlipBtn.setAttribute('aria-pressed', camFlip === 'off' ? 'false' : 'true');
-        camFlipBtn.setAttribute('data-mode', camFlip);
-      }
-    }
-    function cycleCamFlip() {
-      const i = CAM_FLIP_MODES.indexOf(camFlip);
-      camFlip = CAM_FLIP_MODES[(i + 1) % CAM_FLIP_MODES.length];
-      localStorage.setItem('trace_e_cam_flip', camFlip);
-      applyCamFlip();
-      // Best-effort sensor flip on peanut-style firmware (Trace has no orient API yet)
-      tryEspCamOrient(camFlip !== 'off');
-    }
-    async function tryEspCamOrient(vflipOn) {
-      const host = hostOnly(espBase);
-      const urls = [
-        'http://' + host + '/api/camera_orient?vflip=' + (vflipOn ? '1' : '0') + '&hmirror=0',
-        'http://' + host + '/api/camera_quality?vflip=' + (vflipOn ? '1' : '0'),
-      ];
-      for (const url of urls) {
-        try {
-          const r = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
-          if (r.ok) return true;
-        } catch (_) {}
-      }
-      return false;
-    }
-    if (camFlipBtn) camFlipBtn.addEventListener('click', cycleCamFlip);
-    applyCamFlip();
+    <div class="screen" id="screen">
+      <img id="camFeed" alt="Trace-E camera" />
+      <div class="scanlines"></div>
+      <div class="hud-line" id="hudLine">Follow idle</div>
+      <div class="screen-off" id="screenOff">
+        <svg id="traceE" viewBox="0 0 320 260" class="trace-svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="headGrad" cx="40%" cy="35%">
+              <stop offset="0%" stop-color="#ff5a63"/>
+              <stop offset="60%" stop-color="#e11d2e"/>
+              <stop offset="100%" stop-color="#a80f1e"/>
+            </radialGradient>
+          </defs>
+          <ellipse cx="160" cy="235" rx="110" ry="12" fill="#0a0c20" opacity=".35"/>
+          <g stroke="#c8102e" stroke-width="9" stroke-linecap="round" fill="none">
+            <path d="M110 170 Q60 165 40 205"/><path d="M115 185 Q75 195 65 225"/>
+            <path d="M210 170 Q260 165 280 205"/><path d="M205 185 Q245 195 255 225"/>
+            <path d="M125 195 Q100 215 95 235"/><path d="M195 195 Q220 215 225 235"/>
+            <path d="M105 150 Q50 130 30 160"/><path d="M215 150 Q270 130 290 160"/>
+          </g>
+          <g fill="#1b6ee8">
+            <circle cx="40" cy="205" r="7"/><circle cx="65" cy="225" r="7"/>
+            <circle cx="280" cy="205" r="7"/><circle cx="255" cy="225" r="7"/>
+            <circle cx="95" cy="235" r="7"/><circle cx="225" cy="235" r="7"/>
+            <circle cx="30" cy="160" r="7"/><circle cx="290" cy="160" r="7"/>
+          </g>
+          <ellipse cx="160" cy="185" rx="55" ry="26" fill="#9c0f1e" stroke="#12142b" stroke-width="3"/>
+          <ellipse cx="160" cy="110" rx="85" ry="78" fill="url(#headGrad)" stroke="#12142b" stroke-width="4"/>
+          <g class="eyes">
+            <ellipse cx="128" cy="105" rx="26" ry="30" fill="#0c0e24" transform="rotate(-8 128 105)"/>
+            <ellipse cx="192" cy="105" rx="26" ry="30" fill="#0c0e24" transform="rotate(8 192 105)"/>
+            <ellipse cx="128" cy="105" rx="17" ry="21" fill="#38c6ff" class="pupil" transform="rotate(-8 128 105)"/>
+            <ellipse cx="192" cy="105" rx="17" ry="21" fill="#38c6ff" class="pupil" transform="rotate(8 192 105)"/>
+            <circle cx="123" cy="97" r="5" fill="#dff6ff"/><circle cx="187" cy="97" r="5" fill="#dff6ff"/>
+          </g>
+        </svg>
+        <button class="wake-btn" id="btnWake" type="button">WAKE UP TRACE-E</button>
+      </div>
+      <div class="pow" id="pow"></div>
+    </div>
 
-    // Chirps: OFF by default — force silent on every load (overwrite stale localStorage).
-    // User must explicitly click Chirps to enable Situational/Random.
-    const CHIRP_MODES = ['off', 'situational', 'random'];
-    let chirpMode = 'off';
-    try { localStorage.setItem('trace_e_chirps', 'off'); } catch (_) {}
+    <div class="cam-controls">
+      <span class="cam-controls-label">CAM VIEW</span>
+      <button type="button" class="cam-toggle" id="btnFlipV" aria-pressed="true">
+        <span class="ct-icon">⇅</span>
+        <span class="ct-text">FLIP VERTICAL</span>
+        <span class="ct-state" id="flipVState">ON</span>
+      </button>
+      <button type="button" class="cam-toggle" id="btnFlipH" aria-pressed="false">
+        <span class="ct-icon">⇄</span>
+        <span class="ct-text">MIRROR</span>
+        <span class="ct-state" id="flipHState">OFF</span>
+      </button>
+      <button type="button" class="cam-toggle" id="btnLights" aria-pressed="false">
+        <span class="ct-icon">💡</span>
+        <span class="ct-text">LIGHTS</span>
+        <span class="ct-state" id="lightsState">OFF</span>
+      </button>
+      <button type="button" class="cam-toggle" id="btnSnap" aria-pressed="true">
+        <span class="ct-icon">↩</span>
+        <span class="ct-text">SNAP BACK</span>
+        <span class="ct-state" id="snapState">ON</span>
+      </button>
+      <label class="light-level" for="snapL">
+        <span>◀ L</span>
+        <input id="snapL" type="range" min="0" max="100" value="25" step="1" />
+        <span id="snapLVal">25%</span>
+      </label>
+      <label class="light-level" for="snapR">
+        <span>R ▶</span>
+        <input id="snapR" type="range" min="0" max="100" value="25" step="1" />
+        <span id="snapRVal">25%</span>
+      </label>
+      <button type="button" class="cam-toggle" id="btnSiren">
+        <span class="ct-icon">🚨</span>
+        <span class="ct-text">UK SIREN</span>
+        <span class="ct-state">nee-naw</span>
+      </button>
+      <label class="light-level" for="lightBrightness">
+        <span>0V</span>
+        <input id="lightBrightness" type="range" min="0" max="100" value="0" step="1" />
+        <span>3.3V</span>
+      </label>
+      <span class="cam-dims" id="camDims"></span>
+      <span class="cam-dims link-pill" id="linkPill">DRIVE —</span>
+    </div>
+  </div>
 
-    const SFX = {
-      connect: ['connect.wav', 'chirp1.wav'],
-      success: ['success.wav', 'chirp2.wav', 'chirp3.wav'],
-      talk_heard: ['chirp1.wav', 'chirp2.wav', 'success.wav'],
-      speak_ok: ['success.wav', 'chirp3.wav'],
-      alert: ['alert.wav'],
-      error: ['alert.wav', 'stop.wav'],
-      stop: ['stop.wav'],
-      move_start: ['move_start.wav', 'chirp1.wav'],
-      turn: ['turn.wav', 'chirp2.wav'],
-      gesture: ['gesture.wav', 'chirp3.wav'],
-      random: ['chirp1.wav', 'chirp2.wav', 'chirp3.wav', 'gesture.wav'],
-    };
+  <div class="phase-pill idle" id="phasePill"><span class="dot"></span><span id="phaseText">FOLLOW · idle</span></div>
 
-    function pickSfx(situation) {
-      if (chirpMode !== 'situational' && chirpMode !== 'random') return null;
-      if (chirpMode === 'random') {
-        const pool = SFX.random;
-        return pool[Math.floor(Math.random() * pool.length)];
-      }
-      const pool = SFX[situation] || SFX.random;
-      return pool[Math.floor(Math.random() * pool.length)];
-    }
+  <div class="ollie-row">
+    <button type="button" class="ollie-btn follow-on" id="btnFollow" aria-pressed="false">FOLLOW<span style="font-size:.65rem;opacity:.85">ON / OFF</span></button>
+    <button type="button" class="ollie-btn talk" id="btnHoldTalk">🎤 HOLD TALK</button>
+    <button type="button" class="ollie-btn" id="btnStopAll">✋ STOP</button>
+    <button type="button" class="ollie-btn fetch" id="btnFetch" aria-pressed="false">FETCH<span style="font-size:.65rem;opacity:.85">orange rag</span></button>
+  </div>
 
-    function sfxUrl(file) {
-      return 'assets/sfx/' + file + '?v=1';
-    }
+  <div class="talk-text-row">
+    <input id="talkText" type="text" maxlength="160" placeholder="Type to Trace… “follow me” / “stay”" />
+    <button type="button" id="btnTalkSend">SEND</button>
+    <input id="songText" type="text" maxlength="120" placeholder="Play a song… baby shark" />
+    <button type="button" id="btnSong">▶ SONG</button>
+  </div>
+  <p class="note-line" id="talkNote">Hold Talk · mic → amp · motors freeze while talking</p>
 
-    let _sfxAudio = null;
-    function playLocalSfx(file) {
-      if (chirpMode === 'off') return; // hard mute — never play placeholder tones
-      try {
-        if (_sfxAudio) { try { _sfxAudio.pause(); } catch (_) {} }
-        _sfxAudio = new Audio(sfxUrl(file));
-        _sfxAudio.volume = 0.55;
-        _sfxAudio.play().catch(() => {});
-      } catch (_) {}
-    }
+  <div class="deck">
+    <div class="pad">
+      <button class="pad-btn up" data-cmd="FWD" type="button" aria-label="Go">
+        <span class="arrow">⬆️</span><span class="word">GO!</span>
+      </button>
+      <button class="pad-btn left" data-cmd="LEFT" type="button" aria-label="Left">
+        <span class="arrow">⬅️</span><span class="word">TURN</span>
+      </button>
+      <button class="pad-btn stop" data-cmd="STOP" type="button" aria-label="Stop">
+        <span class="arrow">✋</span><span class="word">STOP!</span>
+      </button>
+      <button class="pad-btn right" data-cmd="RIGHT" type="button" aria-label="Right">
+        <span class="arrow">➡️</span><span class="word">TURN</span>
+      </button>
+      <button class="pad-btn down" data-cmd="BACK" type="button" aria-label="Back">
+        <span class="arrow">⬇️</span><span class="word">BACK</span>
+      </button>
+    </div>
 
-    function chirp(situation, { espToo = false } = {}) {
-      // Default: silent. No WASD/gesture/load beeps; no ESP push unless chirps enabled.
-      if (chirpMode === 'off') return;
-      const file = pickSfx(situation);
-      if (!file) return;
-      playLocalSfx(file);
-      if (espToo && BRAIN !== undefined) {
-        fetch(BRAIN + '/api/chirp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ situation, file, esp: espBase, mode: chirpMode }),
-        }).catch(() => {});
-      }
-    }
+    <div class="fun">
+      <button class="fun-btn red" id="btnChirp" type="button" data-pow="THWIP">🕸<span>CHIRP</span></button>
+      <button class="fun-btn blue" id="btnSayHi" type="button" data-pow="HI OLLIE"> 
+        <svg viewBox="0 0 90 74" class="btn-trace" aria-hidden="true">
+          <ellipse cx="45" cy="38" rx="40" ry="34" fill="#e11d2e" stroke="#0b0e1a" stroke-width="3"/>
+          <ellipse cx="31" cy="36" rx="12" ry="14" fill="#0c0e24" transform="rotate(-8 31 36)"/>
+          <ellipse cx="59" cy="36" rx="12" ry="14" fill="#0c0e24" transform="rotate(8 59 36)"/>
+          <ellipse cx="31" cy="36" rx="8" ry="10" fill="#38c6ff" transform="rotate(-8 31 36)"/>
+          <ellipse cx="59" cy="36" rx="8" ry="10" fill="#38c6ff" transform="rotate(8 59 36)"/>
+        </svg>
+        <span>SAY HI</span>
+      </button>
+      <button class="fun-btn blue" id="btnHappy" type="button" data-pow="WEEE!">🎵<span>HAPPY</span></button>
+    </div>
+  </div>
 
-    function cycleChirps() {
-      const i = CHIRP_MODES.indexOf(chirpMode);
-      chirpMode = CHIRP_MODES[(i + 1) % CHIRP_MODES.length];
-      localStorage.setItem('trace_e_chirps', chirpMode);
-      updateChirpsBtn();
-      // Never preview-beep when enabling — stay quiet until a real SFX exists & user action.
-    }
+  <div class="speed-row">
+    <span class="speed-emoji">🐢</span>
+    <input type="range" id="speedSlider" min="20" max="100" value="100" aria-label="speed"/>
+    <span class="speed-emoji">🕷💨</span>
+  </div>
+</main>
 
-    function updateChirpsBtn() {
-      if (!chirpsBtn) return;
-      const label = chirpMode === 'off' ? 'Off' : (chirpMode === 'random' ? 'Random' : 'Situational');
-      chirpsBtn.textContent = 'Chirps: ' + label;
-      chirpsBtn.setAttribute('data-mode', chirpMode);
-      chirpsBtn.setAttribute('aria-pressed', chirpMode === 'off' ? 'false' : 'true');
-    }
-    if (chirpsBtn) {
-      chirpsBtn.addEventListener('click', cycleChirps);
-      updateChirpsBtn();
-    }
+<footer class="footer">TRACE-E · FOLLOW OLLIE · HOLD TALK · FETCH PLAY · TEAM SPIDEY</footer>
 
-    // Differential feel (chassis-corrected):
-    //   A = spin / curve LEFT · D = spin / curve RIGHT
-    //   (A/D were inverted on this bot — signs flipped vs classic tank docs)
-    //   Spin PWM soft (slow pivot); roll curves use strong inner-wheel drop.
-    const SPIN = 36;       // Trace raw L/R in-place (Peanut uses arcade + SPIN_PWM_FRAC)
-    const CURVE_IN = 8;    // inner wheel while rolling (stronger turn authority)
-    const CURVE_OUT = 100;
-    const DRIVE = {
-      '': [0, 0],
-      'w': [100, 100],
-      's': [-100, -100],
-      // Swapped vs classic: A → L+/R− (physical left on this chassis)
-      'a': [SPIN, -SPIN],
-      'd': [-SPIN, SPIN],
-      'wa': [CURVE_OUT, CURVE_IN],
-      'aw': [CURVE_OUT, CURVE_IN],
-      'wd': [CURVE_IN, CURVE_OUT],
-      'dw': [CURVE_IN, CURVE_OUT],
-      'sa': [-CURVE_OUT, -CURVE_IN],
-      'as': [-CURVE_OUT, -CURVE_IN],
-      'sd': [-CURVE_IN, -CURVE_OUT],
-      'ds': [-CURVE_IN, -CURVE_OUT],
-    };
+<div class="modal-backdrop" id="modal" hidden>
+  <div class="modal">
+    <h2>🔒 Grown-Ups Only</h2>
+    <p class="modal-sub">Brain PC + robot on the same Wi‑Fi</p>
+    <div class="field">
+      <label>BRAIN PC (speak_server)</label>
+      <input id="brainInput" type="text" value="http://192.168.1.105:8788" spellcheck="false"/>
+    </div>
+    <div class="field">
+      <label>ESP / ROBOT</label>
+      <input id="espInput" type="text" value="http://192.168.1.104" spellcheck="false"/>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-blue" id="btnSave" type="button">SAVE</button>
+      <button class="btn btn-ghost" id="btnClose" type="button">CLOSE</button>
+    </div>
+  </div>
+</div>
 
-    function hostOnly(base) {
-      try {
-        const u = new URL(base.includes('://') ? base : ('http://' + base));
-        return u.hostname;
-      } catch (_) {
-        return String(base).replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
-      }
-    }
-    // Prefer LAN-direct ESP (CORS on firmware). Proxy only as fallback.
-    function driveUrlDirect() {
-      return 'http://' + hostOnly(espBase) + ':8765/api/drive';
-    }
-    function driveUrlProxy() { return BRAIN + '/api/esp/drive'; }
-    // Single full-panel feed via brain cam hub only — never open ESP :82 from the browser
-    function streamUrl() {
-      return BRAIN + '/api/esp/stream?esp=' + encodeURIComponent(espBase);
-    }
-    let useDirectDrive = false;
-    function statusUrls() {
-      // One known ESP first — avoid scanning every candidate every poll (was a lag hammer).
-      const urls = [];
-      const seen = new Set();
-      const add = (u) => { if (u && !seen.has(u)) { seen.add(u); urls.push(u); } };
-      const h = hostOnly(espBase);
-      add('http://' + h + ':8765/api/status');
-      add(BRAIN + '/api/esp/status?esp=' + encodeURIComponent(espBase));
-      return urls;
-    }
-    function lrToArcade(L, R) {
-      const throttle = Math.max(-1, Math.min(1, (L + R) / 200));
-      // Steer from L/R; full |steer| when spinning so Peanut SPIN_PWM_FRAC can soften
-      let steer = Math.max(-1, Math.min(1, (L - R) / 200));
-      const spinning = Math.abs(throttle) < 0.15 && Math.abs(L) >= 10 && Math.abs(R) >= 10 && (L > 0) !== (R > 0);
-      if (spinning) steer = (L > 0) ? 1 : -1; // preserve direction, full authority
-      // Rolling: boost |steer| so Peanut ARCADE_TURN_GAIN makes a clear curve
-      if (Math.abs(throttle) >= 0.15 && Math.abs(steer) > 0.05) {
-        const sign = steer < 0 ? -1 : 1;
-        steer = sign * Math.max(0.72, Math.abs(steer) * 2.2);
-        if (steer > 1) steer = 1;
-        if (steer < -1) steer = -1;
-      }
-      return { throttle, steer, speed: 100, left: L, right: R };
-    }
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const servedHere = (location.protocol === 'http:' || location.protocol === 'https:')
+    && (location.port === '8788' || location.port === '8787' || location.port === '');
+  let brain = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '')
+    || (servedHere ? '' : 'http://192.168.1.105:8788');
+  let esp = (params.get('esp') || localStorage.getItem('trace_e_esp') || 'http://192.168.1.104').replace(/\/$/, '');
+  let speed = 100;
+  let awake = false;
+  let camLive = false;
+  let followOn = false;
+  let fetchOn = false;
+  // Sensor already does vflip=1 in firmware, so both CSS corrections default OFF or the
+  // feed ends up double-flipped. The CAM VIEW toggles let the user fix it without a reflash.
+  let camFlipV = localStorage.getItem('trace_e_cam_flip_v') === '1';
+  let camFlipH = localStorage.getItem('trace_e_cam_flip_h') === '1';
 
-    // Fire-and-forget drive: coalesce in-flight, short timeout, prefer ESP direct.
-    let _driveInFlight = null;
-    let _drivePending = null;
-    let _driveCtrl = null;
-    function postDrive(L, R) {
-      _drivePending = [L, R];
-      if (_driveInFlight) return _driveInFlight;
-      const run = async () => {
-        while (_drivePending) {
-          const [l, r] = _drivePending;
-          _drivePending = null;
-          const a = lrToArcade(l, r);
-          const q = new URLSearchParams({
-            throttle: String(a.throttle),
-            steer: String(a.steer),
-            speed: String(a.speed),
-            left: String(a.left),
-            right: String(a.right),
-          });
-          if (_driveCtrl) { try { _driveCtrl.abort(); } catch (_) {} }
-          _driveCtrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-          const kill = setTimeout(() => { if (_driveCtrl) _driveCtrl.abort(); }, 280);
-          const opts = {
-            method: 'GET',
-            cache: 'no-store',
-            signal: _driveCtrl ? _driveCtrl.signal : undefined,
-          };
-          try {
-            let ok = false;
-            if (useDirectDrive) {
-              try {
-                const r = await fetch(driveUrlDirect() + '?' + q.toString(), { ...opts, mode: 'cors' });
-                ok = r.ok;
-              } catch (_) {
-                // CORS / offline — try no-cors beacon then proxy once
-                try {
-                  fetch(driveUrlDirect() + '?' + q.toString(), { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-                  ok = true;
-                } catch (__) {
-                  useDirectDrive = false;
-                }
-              }
-            }
-            if (!ok) {
-              q.set('esp', espBase);
-              const r = await fetch(driveUrlProxy() + '?' + q.toString(), { ...opts, mode: 'cors' });
-              ok = r.ok;
-              if (ok) useDirectDrive = false;
-            }
-            driveOk = ok;
-          } catch (_) {
-            driveOk = false;
-          } finally {
-            clearTimeout(kill);
-          }
+  $('brainInput').value = brain || 'http://192.168.1.105:8788';
+  $('espInput').value = esp;
+
+  function brainUrl(path) {
+    return (brain || '') + path;
+  }
+  function pow(word) {
+    const el = $('pow');
+    el.textContent = word;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+  function setAwake(on) {
+    awake = on;
+    document.body.classList.toggle('asleep', !on);
+    $('statusFace').classList.toggle('awake', on);
+    $('statusWord').textContent = on ? 'ONLINE' : 'OFFLINE';
+    $('btnWake').textContent = on ? 'TRACE-E IS ONLINE' : 'WAKE UP TRACE-E';
+    if (on) startCam();
+    else stopCam();
+  }
+  function applyFlip() {
+    const screen = $('screen');
+    screen.classList.toggle('cam-flip-v', camFlipV);
+    screen.classList.toggle('cam-flip-h', camFlipH);
+    $('btnFlipV').setAttribute('aria-pressed', camFlipV ? 'false' : 'true');
+    $('btnFlipH').setAttribute('aria-pressed', camFlipH ? 'true' : 'false');
+    // Firmware already vflips the sensor. CSS off = picture looks flipped-on.
+    // Show ON/OFF for what you SEE, not the inverted CSS flag.
+    $('flipVState').textContent = camFlipV ? 'OFF' : 'ON';
+    $('flipHState').textContent = camFlipH ? 'ON' : 'OFF';
+  }
+  applyFlip();
+
+  let camTimer = 0;
+  let camGen = 0;
+  function startCam() {
+    stopCamTick();
+    const my = camGen;
+    const img = $('camFeed');
+    const pump = () => {
+      if (my !== camGen) return;
+      img.onload = () => {
+        if (my !== camGen) return;
+        camLive = true;
+        img.style.display = 'block';
+        $('screenOff').style.display = 'none';
+        if (img.naturalWidth) {
+          $('camDims').textContent = img.naturalWidth + '×' + img.naturalHeight;
         }
-        _driveInFlight = null;
+        camTimer = setTimeout(pump, 50);
       };
-      _driveInFlight = run();
-      return _driveInFlight;
-    }
-
-    function resolveLR() {
-      let f = keys.has('w'), b = keys.has('s'), l = keys.has('a'), r = keys.has('d');
-      if (f && b) { f = false; b = false; }
-      if (l && r) { l = false; r = false; }
-      const parts = [];
-      if (f) parts.push('w');
-      if (b) parts.push('s');
-      if (l) parts.push('a');
-      if (r) parts.push('d');
-      const key = parts.join('');
-      return DRIVE[key] || [0, 0];
-    }
-
-    const GESTURE_LABELS = {
-      e: 'Speak',
-      ' ': 'Speak',
-      x: 'STOP motors',
-      Escape: 'HALT all',
-      Enter: 'Send TTS',
-    };
-
-    let gesturesOn = false;
-
-    function setGestures(on) {
-      gesturesOn = on;
-      gesturesBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      gesturesBtn.textContent = on ? 'Keys · ON' : 'Keys';
-      gesturesOverlay.classList.toggle('open', on);
-      gesturesOverlay.setAttribute('aria-hidden', on ? 'false' : 'true');
-      document.body.classList.toggle('gestures-on', on);
-      if (!on) gKeys.forEach(el => el.classList.remove('active'));
-    }
-    gesturesBtn.addEventListener('click', () => setGestures(!gesturesOn));
-
-    function syncPads() {
-      pads.forEach(p => p.classList.toggle('active', keys.has(p.dataset.key)));
-      const [L, R] = resolveLR();
-      lm.textContent = L;
-      rm.textContent = R;
-      driveStatus.textContent = 'Drive: ' + (keys.size ? [...keys].join('+').toUpperCase() : '—');
-      motorPill.innerHTML = '<span class="led" id="motorLed"></span> Motors: ' +
-        ((L || R) ? (L + '/' + R) : 'idle');
-
-      const moving = (L !== 0 || R !== 0);
-      // WASD: never chirp (drive stays silent even if chirps mode is later enabled)
-      wasMoving = moving;
-
-      if (L !== lastLR[0] || R !== lastLR[1] || L !== 0 || R !== 0) {
-        lastLR = [L, R];
-        postDrive(L, R);
-      }
-    }
-    function down(k) {
-      if ('wasd'.includes(k)) {
-        if (followOn) stopFollow('WASD takeover');
-        keys.add(k);
-        syncPads();
-      }
-    }
-    function up(k) { if ('wasd'.includes(k)) { keys.delete(k); syncPads(); } }
-
-    // Keep failsafe alive while keys held (~450ms on ESP) — coalesced, not queued
-    setInterval(() => {
-      if (keys.size) {
-        const [L, R] = resolveLR();
-        postDrive(L, R);
-      }
-    }, 400);
-
-    function gestureIdFromEvent(e) {
-      if (e.key === ' ') return ' ';
-      if (e.key === 'Escape' || e.key === 'Enter') return e.key;
-      const k = e.key.toLowerCase();
-      if ('ex'.includes(k)) return k;
-      return null;
-    }
-
-    function fireGesture(id) {
-      if (!id || !(id in GESTURE_LABELS)) return;
-      if (!gesturesOn) setGestures(true);
-      gKeys.forEach(el => el.classList.toggle('active', el.dataset.g === id));
-      const label = GESTURE_LABELS[id];
-      if (id === 'e' || id === ' ' || id === 'Enter') {
-        doSpeak();
-        const msg = (ttsText.value || '').trim() || '(empty)';
-        driveStatus.textContent = 'Gesture ' + label + ' → “' + msg.slice(0, 36) + '”';
-        speakBtn.textContent = 'SENT!';
-        setTimeout(() => { speakBtn.textContent = 'Say!'; }, 900);
-      } else if (id === 'x' || id === 'Escape') {
-        keys.clear();
-        syncPads();
-        postDrive(0, 0);
-        driveStatus.textContent = 'Gesture ' + label + ' · motors 0';
-      } else {
-        driveStatus.textContent = 'Gesture: ' + label;
-      }
-      clearTimeout(fireGesture._t);
-      fireGesture._t = setTimeout(() => {
-        gKeys.forEach(el => { if (el.dataset.g === id) el.classList.remove('active'); });
-      }, 280);
-    }
-
-    window.addEventListener('keydown', e => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        if (e.key === 'Enter' && gesturesOn) {
-          e.preventDefault();
-          fireGesture('Enter');
-        }
-        return;
-      }
-      const k = e.key.toLowerCase();
-      if ('wasd'.includes(k)) { e.preventDefault(); down(k); return; }
-      const gid = gestureIdFromEvent(e);
-      if (gid && (gesturesOn || e.key === 'Escape' || e.key.toLowerCase() === 'x')) {
-        e.preventDefault();
-        fireGesture(gid);
-      }
-    });
-    window.addEventListener('keyup', e => {
-      const k = e.key.toLowerCase();
-      if ('wasd'.includes(k)) { e.preventDefault(); up(k); }
-    });
-    window.addEventListener('blur', () => { keys.clear(); syncPads(); postDrive(0, 0); });
-    pads.forEach(p => {
-      const k = p.dataset.key;
-      p.addEventListener('mousedown', () => down(k));
-      p.addEventListener('mouseup', () => up(k));
-      p.addEventListener('mouseleave', () => up(k));
-      p.addEventListener('touchstart', e => { e.preventDefault(); down(k); }, { passive: false });
-      p.addEventListener('touchend', () => up(k));
-    });
-    gKeys.forEach(el => {
-      el.addEventListener('click', () => fireGesture(el.dataset.g));
-    });
-    speakBtn.addEventListener('click', () => doSpeak());
-    talkToBtn.addEventListener('click', () => doTalkTo());
-    talkToText.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); doTalkTo(); }
-    });
-    ttsText.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); doSpeak(); }
-    });
-    espSaveBtn.addEventListener('click', () => {
-      let v = (espIpInput.value || '').trim();
-      if (!v) return;
-      if (!/^https?:\/\//i.test(v)) v = 'http://' + v;
-      espBase = v.replace(/\/$/, '');
-      localStorage.setItem('trace_e_esp', espBase);
-      espPill.textContent = 'ESP: ' + hostOnly(espBase) + ' (manual)';
-      attachCam();
-      discoverEsp();
-    });
-
-    async function doTalkTo() {
-      const msg = (talkToText.value || '').trim();
-      if (!msg) {
-        talkToNote.textContent = 'Type a message for Trace first.';
-        return;
-      }
-      talkToNote.textContent = 'Sending…';
-      talkToBtn.textContent = '…';
-      try {
-        const r = await fetch(BRAIN + '/api/talk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: msg, esp: espBase }),
-        });
-        const j = await r.json();
-        if (j.ok) {
-          talkToNote.textContent = 'Trace: “' + (j.reply || 'heard') + '”';
-          driveStatus.textContent = 'Talk→Trace: heard';
-        } else {
-          talkToNote.textContent = 'Talk failed: ' + (j.error || r.status);
-        }
-      } catch (err) {
-        talkToNote.textContent = 'Brain offline — start speak_server.py (:8787)';
-      }
-      talkToBtn.textContent = 'Send';
-    }
-
-    async function doSpeak() {
-      const msg = (ttsText.value || '').trim();
-      if (!msg) {
-        speakNote.textContent = 'Type words for Trace to say.';
-        return;
-      }
-      const engine = (ttsEngine && ttsEngine.value) || 'peanut-auto';
-      speakNote.textContent = 'Speaking… synthesizing (' + engine + ')…';
-      speakBtn.textContent = '…';
-      try {
-        const r = await fetch(BRAIN + '/api/speak', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: msg, esp: espBase, engine }),
-        });
-        const j = await r.json();
-        if (j.ok) {
-          const where = j.played_on || '?';
-          if (where === 'esp' || (j.status && String(j.status).toLowerCase().includes('amp'))) {
-            speakNote.textContent = j.status || ('Speaking on amp… (' + (j.engine || 'tts') + ')');
-          } else if (String(where).includes('laptop')) {
-            speakNote.textContent = j.status || ('Speaking on laptop… · ' + (j.engine || '') + ' · ' + (j.detail || ''));
-          } else {
-            speakNote.textContent = 'Said via ' + (j.engine || '?') + ' → ' + where;
-          }
-          driveStatus.textContent = 'Speak→' + where;
-        } else {
-          speakNote.textContent = 'Speak failed: ' + (j.error || r.status) + (j.detail ? (' · ' + j.detail) : '');
-        }
-      } catch (err) {
-        speakNote.textContent = 'Brain offline — run: python desktop/speak_server.py';
-      }
-      speakBtn.textContent = 'Say!';
-    }
-
-    async function discoverEsp() {
-      for (const url of statusUrls()) {
-        try {
-          const r = await fetch(url, { cache: 'no-store', mode: 'cors' });
-          if (!r.ok) continue;
-          const j = await r.json();
-          if (j.model && j.model !== 'trace-e' && j.model !== 'peanut') continue;
-          if (j.ip) {
-            espBase = 'http://' + j.ip;
-            localStorage.setItem('trace_e_esp', espBase);
-            if (espIpInput) espIpInput.value = espBase;
-          }
-          espPill.textContent = 'ESP: ' + (j.ip || hostOnly(espBase)) + (j.cam ? ' · cam OK' : '');
-          return j;
-        } catch (_) { /* try next */ }
-      }
-      espPill.textContent = 'ESP: offline · ' + hostOnly(espBase);
-      return null;
-    }
-
-    function markCamLive() {
-      camBox.classList.add('live');
-      crest.classList.add('dim');
-      camLed.classList.remove('warn');
-      camPill.innerHTML = '<span class="led" id="camLed"></span> Cam: live · hub'
-        + (followOn ? ' · nav overlay' : '');
-    }
-
-    function attachCam() {
-      applyCamFlip();
-      const base = streamUrl();
-      // Cache-bust only when (re)attaching — never on a poll timer
-      const src = base + (base.includes('?') ? '&' : '?') + 't=' + Date.now();
-      clearTimeout(attachCam._fallbackT);
-      clearInterval(attachCam._livePoll);
-      clearInterval(attachCam._framePoll);
-      espCam.onload = () => markCamLive();
-      espCam.onerror = () => {
-        camBox.classList.remove('live');
-        crest.classList.remove('dim');
-        camLed.classList.add('warn');
-        camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: no stream';
+      img.onerror = () => {
+        if (my !== camGen) return;
+        camLive = false;
+        camTimer = setTimeout(pump, 80);
       };
-      espCam.src = src;
-      // MJPEG often skips onload — poll naturalWidth so .live (opacity) flips on
-      let tries = 0;
-      attachCam._livePoll = setInterval(() => {
-        tries += 1;
-        if (espCam.naturalWidth > 0) {
-          clearInterval(attachCam._livePoll);
-          markCamLive();
-        } else if (tries >= 40) {
-          clearInterval(attachCam._livePoll);
-          if (!(espCam.naturalWidth > 0)) {
-            camLed.classList.add('warn');
-            camPill.innerHTML = '<span class="led warn" id="camLed"></span> Cam: waiting for hub…';
-          }
-        }
-      }, 250);
-    }
+      img.src = brainUrl('/api/esp/latest?t=' + Date.now());
+    };
+    pump();
+  }
+  function stopCamTick() {
+    camGen += 1;
+    clearTimeout(camTimer);
+    camTimer = 0;
+  }
+  function stopCam() {
+    stopCamTick();
+    camLive = false;
+    const img = $('camFeed');
+    img.removeAttribute('src');
+    img.style.display = 'none';
+    $('screenOff').style.display = 'flex';
+  }
 
-    function nudgeCamQuality() {
-      const h = hostOnly(espBase);
-      const urls = [
-        'http://' + h + ':8765/api/camera_quality?brightness=0&ae_level=0&vflip=-1&hmirror=-1',
-        'http://' + h + '/api/camera_quality?brightness=0&ae_level=0&vflip=-1&hmirror=-1',
-      ];
-      for (const url of urls) {
-        fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' }).catch(() => {});
-      }
-    }
+  let driveLink = '';
+  let driveMs = 0;
+  function setLink(mode, ms) {
+    if (mode === driveLink && Math.abs(ms - driveMs) < 4) return;
+    driveLink = mode;
+    driveMs = ms;
+    const el = $('linkPill');
+    if (el) el.textContent = 'DRIVE ' + mode + (ms ? ' · ' + Math.round(ms) + 'ms' : '');
+  }
 
-    function brainUrl(path) {
-      const base = BRAIN || '';
-      return base + path;
-    }
+  function drive(left, right) {
+    // Fire-and-forget. Do not parse JSON or wait — that was input lag.
+    const q = 'left=' + left + '&right=' + right + '&esp=' + encodeURIComponent(esp);
+    fetch(brainUrl('/api/esp/drive?' + q), { method: 'GET', cache: 'no-store', keepalive: true })
+      .catch(() => {});
+    setLink('UDP', 0);
+  }
+  // The ESP coasts if no drive command lands within DRIVE_FAILSAFE_MS (1200ms).
+  // Resend while a key/button is held so the watchdog stays a failsafe instead of
+  // a 1-second cutoff. Coalesced timer — never queues a backlog of requests.
+  // 180ms over UDP costs nothing and gives ~6 packets of margin against drops.
+  const DRIVE_REPEAT_MS = 90;
+  let driveHeld = null;
+  let driveRepeatTimer = null;
 
-    function applyFollowStatus(st) {
-      if (!st) return;
-      followOn = !!st.running;
-      followTargetId = (st.target_id != null) ? Number(st.target_id)
-        : ((st.target_human != null) ? Number(st.target_human) : null);
-      if (followStartBtn) followStartBtn.setAttribute('aria-pressed', followOn ? 'true' : 'false');
-      if (human1Btn) human1Btn.setAttribute('aria-pressed', followTargetId === 1 ? 'true' : 'false');
-      if (human2Btn) human2Btn.setAttribute('aria-pressed', followTargetId === 2 ? 'true' : 'false');
-      if (followPanel) followPanel.classList.toggle('nav-live', followOn);
-      if (camBox) camBox.classList.toggle('nav-on', followOn);
-      const lockTxt = (st.lock_state === 'LOST') ? 'LOST·STOP'
-        : (st.person ? 'LOCK' : 'SEEK');
-      const tgtTxt = followTargetId ? ('H' + followTargetId) : 'auto';
-      if (followPill) {
-        followPill.textContent = followOn
-          ? ('Nav: ' + (st.mode || 'on') + ' · ' + lockTxt + ' · ' + tgtTxt
-            + (st.source ? ' · ' + st.source : ''))
-          : 'Nav: idle';
-      }
-      if (followNote) {
-        followNote.textContent = st.message
-          || (followOn
-            ? 'Boxes on main cam · say “human 1” / “human 2”'
-            : 'WASD cancels · one full cam feed (hub overlay when Nav ON)');
-      }
-      if (followSensors) {
-        const us = (st.ultrasonic_cm != null) ? (Number(st.ultrasonic_cm).toFixed(0) + 'cm') : '—';
-        const mic = (st.mic_level != null) ? Number(st.mic_level).toFixed(2) : '—';
-        const micSrc = st.mic_src ? ('/' + st.mic_src) : '';
-        const boxes = (st.boxes != null) ? st.boxes : '—';
-        const humans = Array.isArray(st.humans)
-          ? st.humans.map(h => 'H' + h.id + (h.active ? '*' : '')).join(' ')
-          : '';
-        const miss = (st.sensors && st.sensors.missing) ? st.sensors.missing.join(',') : '';
-        followSensors.textContent = 'Target:' + tgtTxt
-          + (humans ? (' · ' + humans) : '')
-          + ' · ' + lockTxt
-          + ' · boxes:' + boxes
-          + ' · US:' + us
-          + ' · mic:' + mic + micSrc
-          + (st.obstacle ? (' · !' + st.obstacle) : '')
-          + (miss ? (' · missing:' + miss) : '');
-      }
-      if (camNavHud) {
-        if (!followOn) {
-          camNavHud.textContent = 'Nav idle';
-        } else {
-          const usN = st.ultrasonic_cm != null ? Number(st.ultrasonic_cm) : null;
-          let usHud = usN != null ? (' · US ' + usN.toFixed(0) + 'cm') : '';
-          const m = String(st.mode || '');
-          if (m.startsWith('us-') || m.startsWith('seek-avoid') || m === 'seek-back') {
-            usHud = ' · !!' + m.toUpperCase() + (usN != null ? (' ' + usN.toFixed(0) + 'cm') : '');
-          } else if (usN != null && usN <= 40) {
-            usHud = ' · !!US-STOP ' + usN.toFixed(0) + 'cm';
-          } else if (usN != null && usN <= 55) {
-            usHud = ' · !!US-HOLD ' + usN.toFixed(0) + 'cm';
-          }
-          camNavHud.textContent = 'NAV ' + m.toUpperCase()
-            + ' · ' + lockTxt
-            + ' · ' + tgtTxt
-            + ' · L' + (st.left != null ? st.left : 0)
-            + ' R' + (st.right != null ? st.right : 0)
-            + usHud;
-        }
-      }
-      if (followOn && st.left != null && motorPill) {
-        motorPill.innerHTML = '<span class="led" id="motorLed"></span> Motors: L'
-          + st.left + ' R' + st.right;
-        if (motorLed) motorLed.classList.remove('warn');
-      }
-      if (followOn && driveStatus) {
-        driveStatus.textContent = 'Nav ' + (st.mode || '') + ' · ' + tgtTxt + ' · L' + st.left + ' R' + st.right;
-      }
-      // Rebind main feed when nav flips so annotate=1 sticks to one full-bleed stream
-      if (lastFollowRunning !== followOn) {
-        lastFollowRunning = followOn;
-        attachCam();
-      }
+  function holdDrive(left, right) {
+    driveHeld = [left, right];
+    drive(left, right);
+    if (driveRepeatTimer) return;
+    driveRepeatTimer = setInterval(() => {
+      if (!driveHeld) return;
+      drive(driveHeld[0], driveHeld[1]);
+    }, DRIVE_REPEAT_MS);
+  }
+  function releaseDrive(sendStop) {
+    driveHeld = null;
+    if (driveRepeatTimer) {
+      clearInterval(driveRepeatTimer);
+      driveRepeatTimer = null;
     }
+    if (sendStop !== false) drive(0, 0);
+  }
 
-    function pollFollowStatus() {
-      fetch(brainUrl('/api/follow/status'), { cache: 'no-store' })
-        .then(r => r.json())
-        .then(applyFollowStatus)
-        .catch(() => {});
-    }
-
-    function startFollow() {
-      followNote.textContent = 'Starting nav brain…';
-      followOn = true; // so streamUrl adds annotate=1 before attach
-      lastFollowRunning = null; // force rebind in applyFollowStatus
-      fetch(brainUrl('/api/follow/start'), {
+  function motorsFor(cmd) {
+    // Car-style: API left=A rack steer (full-throw), right=B rear drive.
+    // Toy can motor needs full DC to move → W/S always 100, ignore slider.
+    // Steer sign inverted so A=left, D=right match the rack direction.
+    const steer = 100;
+    if (cmd === 'STOP') return [0, 0];
+    if (cmd === 'FWD') return [0, 100];
+    if (cmd === 'BACK') return [0, -100];
+    if (cmd === 'LEFT') return [steer, 0];
+    if (cmd === 'RIGHT') return [-steer, 0];
+    return [0, 0];
+  }
+  function resolveHeldDrive() {
+    let steer = 0;
+    let drive = 0;
+    if (held.has('FWD')) drive = 100;
+    if (held.has('BACK')) drive = -100;
+    // A/D steering — full throw both ways so the rack actually snaps to lock.
+    if (held.has('LEFT')) steer = -100;
+    if (held.has('RIGHT')) steer = 100;
+    return [steer, drive];
+  }
+  async function stopFollowFetch(reason, opts) {
+    const coast = !opts || opts.coast !== false;
+    followOn = false;
+    fetchOn = false;
+    $('btnFollow').setAttribute('aria-pressed', 'false');
+    $('btnFetch').setAttribute('aria-pressed', 'false');
+    try {
+      await fetch(brainUrl('/api/follow/stop'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ esp: espBase }),
-      })
-        .then(r => r.json())
-        .then(st => {
-          applyFollowStatus(st);
-          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
-          if (!st.ok) followNote.textContent = st.error || st.message || 'Nav failed';
-        })
-        .catch(err => {
-          followOn = false;
-          followNote.textContent = 'Brain offline — start speak_server.py';
-          console.warn(err);
-        });
-    }
-
-    function stopFollow(reason) {
-      fetch(brainUrl('/api/follow/stop'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason || 'ui stop' }),
-      })
-        .then(r => r.json())
-        .then(st => {
-          applyFollowStatus(st);
-          followOn = false;
-          if (followPanel) followPanel.classList.remove('nav-live');
-          if (camBox) camBox.classList.remove('nav-on');
-          if (followStartBtn) followStartBtn.setAttribute('aria-pressed', 'false');
-          if (followPill) followPill.textContent = 'Nav: idle';
-          if (followNote) followNote.textContent = reason || 'Nav stopped';
-          if (camNavHud) camNavHud.textContent = 'Nav idle';
-          // applyFollowStatus already rebound raw hub when running→false
-          if (lastFollowRunning !== false) {
-            lastFollowRunning = false;
-            attachCam();
-          }
-        })
-        .catch(() => {
-          followOn = false;
-          if (followNote) followNote.textContent = 'Nav stop requested';
-        });
-    }
-
-    function selectHuman(n) {
-      followTargetId = n;
-      if (human1Btn) human1Btn.setAttribute('aria-pressed', n === 1 ? 'true' : 'false');
-      if (human2Btn) human2Btn.setAttribute('aria-pressed', n === 2 ? 'true' : 'false');
-      const body = { target_human: n, target_id: n, esp: espBase };
-      const url = followOn
-        ? brainUrl('/api/follow/target')
-        : brainUrl('/api/follow/start');
-      if (!followOn) {
-        followOn = true;
-        lastFollowRunning = null;
-      }
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-        .then(r => r.json())
-        .then(st => {
-          applyFollowStatus(st);
-          if (!followPoll) followPoll = setInterval(pollFollowStatus, 400);
-          if (followNote) followNote.textContent = st.message || ('Following Human ' + n);
-        })
-        .catch(() => {
-          if (followNote) followNote.textContent = 'Brain offline — start speak_server.py';
-        });
-    }
-
-    const listenBtn = document.getElementById('listenBtn');
-    const listenNote = document.getElementById('listenNote');
-    let listenPoll = null;
-    let listenRecording = false;
-    let listenMedia = null;
-    let listenRecorder = null;
-    let lastListenPhase = '';
-
-    async function startBrowserListenCapture() {
-      if (listenRecording) return;
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        if (listenNote) listenNote.textContent = 'Listen: no browser mic — allow mic or use Talk button after typing';
-        return;
-      }
-      try {
-        listenMedia = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
-        });
-        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
-        listenRecorder = mime ? new MediaRecorder(listenMedia, { mimeType: mime }) : new MediaRecorder(listenMedia);
-        const chunks = [];
-        listenRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
-        listenRecorder.onstop = async () => {
-          try {
-            const blob = new Blob(chunks, { type: listenRecorder.mimeType || 'audio/webm' });
-            await fetch(brainUrl('/api/listen/audio'), {
-              method: 'POST',
-              headers: { 'Content-Type': blob.type || 'audio/webm' },
-              body: blob
-            });
-          } catch (_) {}
-          if (listenMedia) {
-            listenMedia.getTracks().forEach(t => t.stop());
-            listenMedia = null;
-          }
-          listenRecording = false;
-          listenRecorder = null;
-        };
-        listenRecording = true;
-        listenRecorder.start(250);
-        if (listenNote) listenNote.textContent = 'Listen: recording… talk now';
-        setTimeout(() => {
-          if (listenRecorder && listenRecorder.state !== 'inactive') listenRecorder.stop();
-        }, 5500);
-      } catch (err) {
-        if (listenNote) listenNote.textContent = 'Listen: mic blocked — allow microphone for this page';
-        listenRecording = false;
-      }
-    }
-
-    function pollListenStatus() {
-      fetch(brainUrl('/api/listen/status'), { cache: 'no-store' })
-        .then(r => r.json())
-        .then(st => {
-          if (!st || !st.ok && st.enabled === false) return;
-          const phase = st.phase || 'idle';
-          if (listenNote) {
-            listenNote.textContent = 'Listen: ' + phase
-              + (st.heard ? (' · “' + String(st.heard).slice(0, 48) + '”') : '')
-              + (st.reply ? (' → ' + String(st.reply).slice(0, 48)) : '');
-          }
-          if (phase === 'listening' && lastListenPhase !== 'listening') {
-            startBrowserListenCapture();
-          }
-          lastListenPhase = phase;
-        })
-        .catch(() => {});
-    }
-
-    if (listenBtn) {
-      listenBtn.addEventListener('click', () => {
-        fetch(brainUrl('/api/listen/start'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-          .then(r => r.json())
-          .then(j => {
-            if (listenNote) listenNote.textContent = j.ok ? 'Listen: starting…' : ('Listen: ' + (j.error || 'failed'));
-          })
-          .catch(() => { if (listenNote) listenNote.textContent = 'Listen: brain offline'; });
+        body: JSON.stringify({ reason: reason || 'stop', coast: coast }),
       });
-    }
+    } catch (_) {}
+    try {
+      await fetch(brainUrl('/api/chase?on=0&esp=' + encodeURIComponent(esp)), { cache: 'no-store' });
+    } catch (_) {}
+    // Never coast here on WASD takeover — that was killing W right after drive()
+    if (coast) drive(0, 0);
+    setPhase('idle', 'FOLLOW · idle');
+  }
 
-    const musicBtn = document.getElementById('musicBtn');
-    const musicQuery = document.getElementById('musicQuery');
-    const musicNote = document.getElementById('musicNote');
-    function playMusic() {
-      const q = (musicQuery && musicQuery.value || '').trim();
-      if (!q) { if (musicNote) musicNote.textContent = 'Music: type a song name'; return; }
-      if (musicNote) musicNote.textContent = 'Music: fetching…';
-      fetch(brainUrl('/api/music/play'), {
+  function setPhase(phase, text) {
+    const pill = $('phasePill');
+    pill.className = 'phase-pill ' + (phase || 'idle');
+    $('phaseText').textContent = text || ('FOLLOW · ' + (phase || 'idle'));
+    $('hudLine').textContent = text || phase || 'Follow idle';
+  }
+
+  function applyFollowStatus(st) {
+    if (!st) return;
+    followOn = !!st.running;
+    $('btnFollow').setAttribute('aria-pressed', followOn ? 'true' : 'false');
+    const phase = st.phase || (st.bumper ? 'bumper' : (st.person ? 'locked' : (followOn ? 'hunting' : 'idle')));
+    const us = st.ultrasonic_cm != null ? (' · US ' + Number(st.ultrasonic_cm).toFixed(0) + 'cm') : '';
+    const mode = st.mode ? (' · ' + st.mode) : '';
+    setPhase(followOn ? phase : 'idle',
+      (followOn ? ('FOLLOW · ' + phase + mode + us) : 'FOLLOW · idle'));
+  }
+
+  function pollFollow() {
+    fetch(brainUrl('/api/follow/status'), { cache: 'no-store' })
+      .then((r) => r.json())
+      .then(applyFollowStatus)
+      .catch(() => {});
+  }
+
+  $('btnWake').addEventListener('click', async () => {
+    try {
+      const r = await fetch(brainUrl('/api/health'), { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      setAwake(true);
+      pow('LINK ESTABLISHED');
+      pollFollow();
+    } catch (_) {
+      pow('BRAIN OFFLINE');
+      setAwake(false);
+    }
+  });
+
+  $('btnFollow').addEventListener('click', async () => {
+    if (followOn) {
+      await stopFollowFetch('follow off');
+      pow('FOLLOW OFF');
+      return;
+    }
+    fetchOn = false;
+    $('btnFetch').setAttribute('aria-pressed', 'false');
+    try {
+      const r = await fetch(brainUrl('/api/follow/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q })
-      }).then(r => r.json()).then(j => {
-        if (musicNote) musicNote.textContent = j.ok ? ('Music: starting “' + q + '”') : ('Music: ' + (j.error || 'fail'));
-      }).catch(() => { if (musicNote) musicNote.textContent = 'Music: brain offline'; });
+        body: JSON.stringify({ esp: esp, target_human: 1 }),
+      });
+      const j = await r.json();
+      if (j.ok === false) throw new Error(j.error || 'fail');
+      followOn = true;
+      $('btnFollow').setAttribute('aria-pressed', 'true');
+      setPhase('hunting', 'FOLLOW · hunting');
+      pow('FOLLOW OLLIE');
+      pollFollow();
+    } catch (e) {
+      pow('FOLLOW FAIL');
+      $('talkNote').textContent = 'Follow failed — is speak_server + cam hub up?';
     }
-    if (musicBtn) musicBtn.addEventListener('click', playMusic);
-    if (musicQuery) musicQuery.addEventListener('keydown', e => { if (e.key === 'Enter') playMusic(); });
-    setInterval(() => {
-      fetch(brainUrl('/api/music/status'), { cache: 'no-store' })
-        .then(r => r.json())
-        .then(st => {
-          if (!musicNote || !st) return;
-          musicNote.textContent = 'Music: ' + (st.phase || 'idle')
-            + (st.title ? (' · ' + String(st.title).slice(0, 40)) : '')
-            + (st.last_error ? (' · ' + String(st.last_error).slice(0, 40)) : '');
-        }).catch(() => {});
-    }, 1200);
+  });
 
-    if (followStartBtn) followStartBtn.addEventListener('click', startFollow);
-    if (followStopBtn) followStopBtn.addEventListener('click', () => stopFollow('ui stop'));
-    if (human1Btn) human1Btn.addEventListener('click', () => selectHuman(1));
-    if (human2Btn) human2Btn.addEventListener('click', () => selectHuman(2));
+  $('btnFetch').addEventListener('click', async () => {
+    const want = !fetchOn;
+    try {
+      if (want && followOn) {
+        await fetch(brainUrl('/api/follow/stop'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: 'fetch' }),
+        });
+        followOn = false;
+        $('btnFollow').setAttribute('aria-pressed', 'false');
+      }
+      const r = await fetch(brainUrl('/api/chase?on=' + (want ? '1' : '0') + '&esp=' + encodeURIComponent(esp)), {
+        cache: 'no-store',
+      });
+      const j = await r.json();
+      fetchOn = !!(j.chase != null ? j.chase : want);
+      $('btnFetch').setAttribute('aria-pressed', fetchOn ? 'true' : 'false');
+      pow(fetchOn ? 'FETCH ON' : 'FETCH OFF');
+      if (fetchOn) setPhase('hunting', 'FETCH · orange rag');
+      else if (!followOn) setPhase('idle', 'FOLLOW · idle');
+    } catch (_) {
+      pow('FETCH FAIL');
+    }
+  });
 
-    (async () => {
-      await discoverEsp();
-      nudgeCamQuality();
-      attachCam();
-      // Status poll was 8s × many IPs — now ~30s, single host
-      setInterval(discoverEsp, 30000);
-      pollFollowStatus();
-      pollListenStatus();
-      listenPoll = setInterval(pollListenStatus, 500);
-    })();
-  </script>
+  $('btnStopAll').addEventListener('click', async () => {
+    await stopFollowFetch('ui stop');
+    pow('MOTORS STOPPED');
+  });
+
+  /* Hold Talk — MediaRecorder → /api/listen/audio */
+  let mediaRec = null;
+  let chunks = [];
+  async function startTalkRec() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $('talkNote').textContent = 'Mic not available — type a message instead';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+      mediaRec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      mediaRec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        $('btnHoldTalk').classList.remove('recording');
+        $('btnHoldTalk').textContent = '🎤 HOLD TALK';
+        const blob = new Blob(chunks, { type: mediaRec.mimeType || 'audio/webm' });
+        if (blob.size < 64) {
+          $('talkNote').textContent = 'Too short — hold longer and try again';
+          return;
+        }
+        $('talkNote').textContent = 'Thinking… motors held';
+        try {
+          const r = await fetch(brainUrl('/api/listen/audio'), {
+            method: 'POST',
+            headers: { 'Content-Type': blob.type || 'audio/webm' },
+            body: blob,
+          });
+          const j = await r.json();
+          if (j.ok) {
+            $('talkNote').textContent = 'Heard: “' + (j.heard || '') + '” → “' + (j.reply || '') + '”';
+            pow('TALK OK');
+            pollFollow();
+          } else {
+            $('talkNote').textContent = 'Talk failed: ' + (j.error || r.status);
+            pow('TALK FAIL');
+          }
+        } catch (_) {
+          $('talkNote').textContent = 'Brain offline for Talk';
+        }
+      };
+      mediaRec.start();
+      $('btnHoldTalk').classList.add('recording');
+      $('btnHoldTalk').textContent = '⏺ LISTENING…';
+      $('talkNote').textContent = 'Listening — release when done';
+      pow('LISTENING');
+    } catch (_) {
+      $('talkNote').textContent = 'Mic permission denied — use type + Send';
+    }
+  }
+  function stopTalkRec() {
+    if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
+  }
+  const holdBtn = $('btnHoldTalk');
+  holdBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); startTalkRec(); });
+  holdBtn.addEventListener('pointerup', stopTalkRec);
+  holdBtn.addEventListener('pointerleave', stopTalkRec);
+  holdBtn.addEventListener('pointercancel', stopTalkRec);
+
+  async function sendTalkText() {
+    const text = ($('talkText').value || '').trim();
+    if (!text) return;
+    $('talkNote').textContent = 'Sending…';
+    try {
+      const r = await fetch(brainUrl('/api/talk'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, speak: true, say_reply: true, esp: esp }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        $('talkNote').textContent = 'Trace: “' + (j.reply || '') + '”';
+        pow('GOT IT');
+        pollFollow();
+      } else {
+        $('talkNote').textContent = 'Talk failed: ' + (j.error || r.status);
+      }
+    } catch (_) {
+      $('talkNote').textContent = 'Brain offline';
+    }
+  }
+  $('btnTalkSend').addEventListener('click', sendTalkText);
+  $('talkText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendTalkText();
+  });
+
+  /* Drive pad — shares the held set with the keyboard so steer + drive combine
+     (e.g. hold GO + TURN on a touchscreen, same as W+A). */
+  const MOVE = new Set(['FWD', 'BACK', 'LEFT', 'RIGHT']);
+  const held = new Set();
+  function refreshHeldDrive() {
+    if ([...held].some((c) => MOVE.has(c))) {
+      const [l, r] = resolveHeldDrive();
+      holdDrive(l, r);
+    } else {
+      releaseDrive();
+    }
+  }
+  document.querySelectorAll('.pad-btn').forEach((btn) => {
+    const cmd = btn.dataset.cmd;
+    const press = (e) => {
+      e.preventDefault();
+      btn.classList.add('pressed');
+      if (cmd === 'STOP') {
+        held.clear();
+        releaseDrive();
+        stopFollowFetch('pad stop');
+        pow('MOTORS STOPPED');
+        return;
+      }
+      if (followOn || fetchOn) {
+        /* WASD takeover — do not coast(0) or it cancels this drive */
+        stopFollowFetch('WASD takeover', { coast: false });
+      }
+      held.add(cmd);
+      refreshHeldDrive();
+    };
+    const release = () => {
+      btn.classList.remove('pressed');
+      if (!MOVE.has(cmd)) return;
+      held.delete(cmd);
+      refreshHeldDrive();
+    };
+    btn.addEventListener('pointerdown', press);
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointerleave', release);
+    btn.addEventListener('pointercancel', release);
+  });
+
+  const keyMap = {
+    w: 'FWD', arrowup: 'FWD',
+    s: 'BACK', arrowdown: 'BACK',
+    a: 'LEFT', arrowleft: 'LEFT',
+    d: 'RIGHT', arrowright: 'RIGHT',
+    ' ': 'STOP',
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    const cmd = keyMap[e.key.toLowerCase()];
+    if (!cmd || held.has(cmd)) return;
+    if (cmd === 'STOP') { held.clear(); releaseDrive(); stopFollowFetch('key stop'); return; }
+    held.add(cmd);
+    const btn = document.querySelector('.pad-btn[data-cmd="' + cmd + '"]');
+    if (btn) btn.classList.add('pressed');
+    if (followOn || fetchOn) stopFollowFetch('WASD takeover', { coast: false });
+    refreshHeldDrive();
+  });
+  window.addEventListener('keyup', (e) => {
+    const cmd = keyMap[e.key.toLowerCase()];
+    if (!cmd) return;
+    held.delete(cmd);
+    const btn = document.querySelector('.pad-btn[data-cmd="' + cmd + '"]');
+    if (btn) btn.classList.remove('pressed');
+    if (!MOVE.has(cmd)) return;
+    refreshHeldDrive();  // W+A keeps driving when one key lifts
+  });
+  // Losing focus/visibility must not leave the repeat timer driving blind.
+  window.addEventListener('blur', () => { held.clear(); if (driveHeld) releaseDrive(); });
+
+  $('speedSlider').addEventListener('input', (e) => { speed = +e.target.value; });
+
+  $('btnChirp').addEventListener('click', async () => {
+    pow('THWIP');
+    try {
+      await fetch(brainUrl('/api/chirp'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ situation: 'random', esp: esp, mode: 'random' }),
+      });
+    } catch (_) {}
+  });
+  $('btnSayHi').addEventListener('click', async () => {
+    pow('HI OLLIE');
+    try {
+      await fetch(brainUrl('/api/speak'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Hey Ollie! Ready to play.', esp: esp }),
+      });
+    } catch (_) {}
+  });
+  $('btnHappy').addEventListener('click', async () => {
+    pow('WEEE!');
+    try {
+      await fetch(brainUrl('/api/speak'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Whee! That was fun!', esp: esp }),
+      });
+    } catch (_) {}
+  });
+  $('btnFlipV').addEventListener('click', () => {
+    camFlipV = !camFlipV;
+    localStorage.setItem('trace_e_cam_flip_v', camFlipV ? '1' : '0');
+    applyFlip();
+  });
+  $('btnFlipH').addEventListener('click', () => {
+    camFlipH = !camFlipH;
+    localStorage.setItem('trace_e_cam_flip_h', camFlipH ? '1' : '0');
+    applyFlip();
+  });
+
+  let headlightBrightness = 0;
+  let lastHeadlightBrightness = 100;
+  let lightSendTimer = null;
+  function applyLights() {
+    const headlightsOn = headlightBrightness > 0;
+    $('btnLights').setAttribute('aria-pressed', headlightsOn ? 'true' : 'false');
+    $('lightsState').textContent = headlightsOn ? (headlightBrightness + '%') : 'OFF';
+    $('lightBrightness').value = String(headlightBrightness);
+  }
+  function setHeadlightBrightness(level, immediate) {
+    headlightBrightness = Math.max(0, Math.min(100, Number(level) || 0));
+    if (headlightBrightness > 0) lastHeadlightBrightness = headlightBrightness;
+    applyLights();
+    clearTimeout(lightSendTimer);
+    const send = () => {
+      const q = 'brightness=' + headlightBrightness + '&esp=' + encodeURIComponent(esp);
+      fetch(brainUrl('/api/esp/headlights?' + q), { method: 'GET', cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (j && Number.isFinite(Number(j.brightness))) {
+            headlightBrightness = Number(j.brightness);
+            if (headlightBrightness > 0) lastHeadlightBrightness = headlightBrightness;
+            applyLights();
+          }
+        })
+        .catch(() => {});
+    };
+    if (immediate) send();
+    else lightSendTimer = setTimeout(send, 60);
+  }
+  $('btnLights').addEventListener('click', () => {
+    setHeadlightBrightness(headlightBrightness > 0 ? 0 : lastHeadlightBrightness, true);
+  });
+  $('lightBrightness').addEventListener('input', (e) => {
+    setHeadlightBrightness(e.target.value, false);
+  });
+  $('lightBrightness').addEventListener('change', (e) => {
+    setHeadlightBrightness(e.target.value, true);
+  });
+  applyLights();
+
+  let snapBack = localStorage.getItem('trace_e_snapback') !== '0';
+  let snapPctL = clampPct(localStorage.getItem('trace_e_snap_l'), 25);
+  let snapPctR = clampPct(localStorage.getItem('trace_e_snap_r'), 25);
+
+  function clampPct(v, dflt) {
+    const n = parseInt(v, 10);
+    if (!isFinite(n)) return dflt;
+    return Math.max(0, Math.min(100, n));
+  }
+  function applySnap() {
+    $('btnSnap').setAttribute('aria-pressed', snapBack ? 'true' : 'false');
+    $('snapState').textContent = snapBack ? 'ON' : 'OFF';
+    $('snapL').value = snapPctL;
+    $('snapR').value = snapPctR;
+    $('snapLVal').textContent = snapPctL + '%';
+    $('snapRVal').textContent = snapPctR + '%';
+    $('snapL').disabled = !snapBack;
+    $('snapR').disabled = !snapBack;
+  }
+  // Dragging a slider fires a lot; rate-limit the wire but always send the
+  // value the user let go on.
+  let snapSendTs = 0, snapPending = null;
+  function pushSnap(now) {
+    const q = 'snap=' + (snapBack ? '1' : '0')
+      + '&center_pct_l=' + snapPctL + '&center_pct_r=' + snapPctR
+      + '&esp=' + encodeURIComponent(esp);
+    const t = Date.now();
+    if (!now && t - snapSendTs < 140) {
+      if (snapPending) clearTimeout(snapPending);
+      snapPending = setTimeout(() => pushSnap(true), 140);
+      return;
+    }
+    snapSendTs = t;
+    if (snapPending) { clearTimeout(snapPending); snapPending = null; }
+    localStorage.setItem('trace_e_snapback', snapBack ? '1' : '0');
+    localStorage.setItem('trace_e_snap_l', String(snapPctL));
+    localStorage.setItem('trace_e_snap_r', String(snapPctR));
+    fetch(brainUrl('/api/steer?' + q), { method: 'GET', cache: 'no-store' }).catch(() => {});
+  }
+  function sendSnap(on) {
+    snapBack = !!on;
+    applySnap();
+    pushSnap(true);
+  }
+  $('btnSnap').addEventListener('click', () => sendSnap(!snapBack));
+  ['input', 'change'].forEach((ev) => {
+    $('snapL').addEventListener(ev, (e) => {
+      snapPctL = clampPct(e.target.value, snapPctL);
+      $('snapLVal').textContent = snapPctL + '%';
+      pushSnap(ev === 'change');
+    });
+    $('snapR').addEventListener(ev, (e) => {
+      snapPctR = clampPct(e.target.value, snapPctR);
+      $('snapRVal').textContent = snapPctR + '%';
+      pushSnap(ev === 'change');
+    });
+  });
+  applySnap();
+  pushSnap(true);
+
+  // Siren is synthesised on the ESP itself — no download, no radio hit.
+  // UK hi-lo two-tone ("nee-naw").
+  function playSiren() {
+    pow('SIREN');
+    fetch(brainUrl('/api/siren?ms=4000&mode=uk&esp=' + encodeURIComponent(esp)), {
+      method: 'GET', cache: 'no-store',
+    }).catch(() => {});
+  }
+  $('btnSiren').addEventListener('click', playSiren);
+
+  function playSong() {
+    const q = ($('songText').value || '').trim() || 'baby shark kids nursery rhyme';
+    pow('SONG');
+    fetch(brainUrl('/api/music/play'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, esp: esp }),
+    }).catch(() => {});
+  }
+  $('btnSong').addEventListener('click', playSong);
+  $('songText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') playSong();
+  });
+
+  function closeModal() { $('modal').hidden = true; }
+  $('btnGear').addEventListener('click', () => { $('modal').hidden = false; });
+  $('btnClose').addEventListener('click', closeModal);
+  $('btnSave').addEventListener('click', () => {
+    brain = ($('brainInput').value || '').trim().replace(/\/$/, '');
+    esp = ($('espInput').value || '').trim().replace(/\/$/, '');
+    localStorage.setItem('trace_e_brain', brain);
+    localStorage.setItem('trace_e_esp', esp);
+    if (awake) startCam();
+    closeModal();
+    pow('SAVED');
+  });
+  $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
+
+  setInterval(() => { if (awake && followOn) pollFollow(); }, 800);
+  /* Auto-wake when served from speak_server */
+  if (servedHere) {
+    fetch(brainUrl('/api/health'), { cache: 'no-store' })
+      .then((r) => r.ok ? setAwake(true) : null)
+      .catch(() => {});
+  }
+})();
+</script>
 </body>
 </html>

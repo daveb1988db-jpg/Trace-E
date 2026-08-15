@@ -17,26 +17,37 @@ static const int PIN_MIC = 3;
 static const int PIN_TRIG = 1;
 static const int PIN_ECHO = 2;
 
-// --- L9110S dual H-bridge (differential drive) ---
-// Motor A = left wheel, Motor B = right wheel
-static const int PIN_MOTOR_A_IA = 21;  // A-1A left
-static const int PIN_MOTOR_A_IB = 41;  // A-1B left
-static const int PIN_MOTOR_B_IA = 42;  // B-1A right
-static const int PIN_MOTOR_B_IB = 46;  // B-1B right
+// --- Pretend headlights (2× LED, resistor on each leg) ---
+// Wired with the + legs on the 3.3V rail and GPIO38 as the return, so the pin
+// sinks: LOW = lit, HIGH = dark. ACTIVE_LOW inverts the PWM duty so the UI's
+// 0%/off really is off and 100% is full bright.
+static const int PIN_HEADLIGHTS = 38;
+static const bool HEADLIGHTS_ACTIVE_LOW = true;
 
-// Chassis polarity (tune on first drive test)
-static const bool MOTOR_INVERT_DIR = true;   // flip both wheels if "forward" is reverse
-static const bool MOTOR_INVERT_B   = false;  // flip right only if wheels fight
+// --- L9110S dual H-bridge (car-style chassis) ---
+// Motor A = front rack-and-pinion STEER (A/D keys)
+// Motor B = central rear DRIVE (W/S keys)
+// API still uses ?left=&right= → left=A(steer), right=B(drive).
+// Chassis has the motors crossed vs the terminal labels: the rack sits on the
+// pins that used to be "rear" (42/46) and the rear motor on 21/41. Map is
+// crossed here so A/D → rack and W/S → rear without rewiring.
+static const int PIN_MOTOR_A_IA = 42;  // steer rack (was labelled B)
+static const int PIN_MOTOR_A_IB = 46;  // steer IB — GPIO46 digital only, fine for full-throw rack
+static const int PIN_MOTOR_B_IA = 21;  // rear drive (was labelled A)
+static const int PIN_MOTOR_B_IB = 41;  // rear drive
+static const int MOTOR_A_SCALE_PCT = 100;  // steer trim
+// Fine-tune live via /api/trim if rear pull / steer strength needs it.
+static const int MOTOR_A_FWD_PCT = 100;   // steer strength trim
+static const int MOTOR_RIGHT_PCT = 100;   // rear drive trim
 
-// LEDC: keep ch0/timer0 free for camera XCLK later; motors use ch4–7
-static const int MOTOR_PWM_FREQ_HZ = 500;
-static const int MOTOR_PWM_RES_BITS = 8;
-static const int MOTOR_LEDC_CH_A_IA = 4;
-static const int MOTOR_LEDC_CH_A_IB = 5;
-static const int MOTOR_LEDC_CH_B_IA = 6;
-static const int MOTOR_LEDC_CH_B_IB = 7;
 
-// --- OV2640 FPC (Freenove ESP32-S3 WROOM / N16R8) ---
+// IA HIGH is reverse on this chassis; invert so W uses IB = forward.
+static const bool MOTOR_INVERT_DIR = true;
+static const bool MOTOR_INVERT_B   = true;   // rear motor polarity (W was reversing)
+static const bool MOTOR_INVERT_A   = false;  // steer sign handled in brain/UI (A/D)
+
+// --- OV2640 FPC (Amazon separate module on Freenove ESP32-S3 N16R8 cam connector) ---
+// Not the Freenove stock lens — same 24-pin DVP FPC pinout into the board socket.
 static const int PIN_CAM_PWDN  = -1;
 static const int PIN_CAM_RESET = -1;
 static const int PIN_CAM_XCLK  = 15;

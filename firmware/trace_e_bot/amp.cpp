@@ -7,9 +7,14 @@
 #include <math.h>
 #include <esp_heap_caps.h>
 #include <driver/i2s_std.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 
 static const int AMP_SAMPLE_RATE = 16000;
 static const size_t AMP_MAX_WAV = 320 * 1024;
+// Whole-song buffer in PSRAM (N16R8 has 8MB). 5MB ≈ 160s @ 16kHz mono s16.
+static const size_t PLAY_URL_MAX = 5 * 1024 * 1024;
 static const size_t AMP_WRITE_FRAMES = 256;
 
 static i2s_chan_handle_t s_tx = NULL;
@@ -19,8 +24,23 @@ static size_t g_postLen = 0;
 static size_t g_postCap = 0;
 static bool g_postOverflow = false;
 static bool g_playBusy = false;
+static volatile bool g_playCancel = false;
 static WebServer *g_ampSrv = nullptr;
 static int g_ampVolume = 100;  // 0..150 — beep-kill left peanut at 0; Trace defaults loud
+static QueueHandle_t g_ampQ = nullptr;
+
+enum { AMP_JOB_WAV = 1, AMP_JOB_URL = 2, AMP_JOB_SIREN = 3 };
+struct AmpJob {
+  uint8_t kind;
+  uint8_t *wav;
+  size_t wavLen;
+  char url[384];
+  uint32_t ms;    // siren duration
+  int loHz;       // siren low tone
+  int hiHz;       // siren high tone
+  uint32_t wailMs;  // one full cycle (sweep period, or hi+lo two-tone period)
+  uint8_t mode;   // 0 = US wail sweep, 1 = UK hi-lo two-tone
+};
 
 static void *ampMalloc(size_t n) {
   void *p = nullptr;
@@ -67,6 +87,7 @@ static bool i2sWriteAll(const void *data, size_t bytes) {
   const uint8_t *p = (const uint8_t *)data;
   size_t left = bytes;
   while (left) {
+    if (g_playCancel) return false;
     size_t written = 0;
     if (i2s_channel_write(s_tx, p, left, &written, pdMS_TO_TICKS(200)) != ESP_OK) return false;
     if (written == 0) return false;
@@ -90,6 +111,7 @@ static void i2sSilence(int frames) {
 }
 
 void ampStop() {
+  g_playCancel = true;
   g_playBusy = false;
   if (s_tx && s_i2sReady) {
     i2sSilence(64);
@@ -183,7 +205,7 @@ bool ampPlayWavBuffer(const uint8_t *wav, size_t len) {
       out[i * 2] = (int16_t)lv;
       out[i * 2 + 1] = (int16_t)rv;
     }
-    if (!i2sWriteAll(out, n * 2 * sizeof(int16_t))) return false;
+    if (g_playCancel || !i2sWriteAll(out, n * 2 * sizeof(int16_t))) return false;
     done += n;
     yield();
   }
@@ -193,9 +215,14 @@ bool ampPlayWavBuffer(const uint8_t *wav, size_t len) {
   return true;
 }
 
+// Download the WHOLE WAV into PSRAM first, then play from memory. Streaming
+// during playback pinned the 2.4GHz radio for the whole song (cam froze) and
+// any drive burst starved the read and killed it. One download burst instead:
+// cam only hitches while buffering, then drive+cam are free during playback.
 static bool playUrl(const String &url) {
   HTTPClient http;
-  http.setTimeout(45000);
+  http.setTimeout(15000);
+  http.setReuse(false);
   if (!http.begin(url)) return false;
   int code = http.GET();
   if (code != 200) {
@@ -204,33 +231,134 @@ static bool playUrl(const String &url) {
     return false;
   }
   int total = http.getSize();
-  WiFiClient *stream = http.getStreamPtr();
-  size_t cap = (total > 0 && (size_t)total <= AMP_MAX_WAV) ? (size_t)total : AMP_MAX_WAV;
+  size_t cap;
+  if (total > 0 && (size_t)total <= PLAY_URL_MAX) {
+    cap = (size_t)total;
+  } else {
+    cap = PLAY_URL_MAX;  // unknown/oversized: grab up to the cap
+  }
   uint8_t *buf = (uint8_t *)ampMalloc(cap);
   if (!buf) {
+    Serial.printf("amp play_url: PSRAM alloc %u failed\n", (unsigned)cap);
     http.end();
     return false;
   }
+  WiFiClient *stream = http.getStreamPtr();
   size_t got = 0;
-  unsigned long t0 = millis();
-  while (got < cap && millis() - t0 < 45000UL) {
-    size_t avail = stream->available();
-    if (avail) {
-      got += stream->readBytes(buf + got, min(avail, cap - got));
+  unsigned long lastData = millis();
+  while (got < cap && !g_playCancel) {
+    int avail = stream->available();
+    if (avail > 0) {
+      int r = stream->read(buf + got, min((size_t)avail, cap - got));
+      if (r > 0) {
+        got += (size_t)r;
+        lastData = millis();
+      }
       if (total > 0 && got >= (size_t)total) break;
     } else {
       if (!stream->connected() && !stream->available()) break;
+      if (millis() - lastData > 15000UL) break;  // stalled feed
       delay(1);
     }
   }
   http.end();
-  Serial.printf("amp play_url got=%u RIFF=%d\n", (unsigned)got,
+  Serial.printf("amp play_url buffered %u/%d bytes RIFF=%d\n",
+                (unsigned)got, total,
                 (got >= 4 && buf[0] == 'R' && buf[1] == 'I' && buf[2] == 'F' && buf[3] == 'F'));
-  g_playBusy = true;
+  if (g_playCancel || got < 44) {
+    ampFree(buf);
+    return false;
+  }
+  // Play from PSRAM — no network needed, so cam + drive keep the radio.
   bool ok = ampPlayWavBuffer(buf, got);
-  g_playBusy = false;
   ampFree(buf);
-  return ok;
+  return ok && !g_playCancel;
+}
+
+// Siren is synthesised on the ESP — no download, so it costs zero radio and
+// works even if the Z400 is offline.
+//   mode 0 = US "wail": continuous triangle sweep lo↔hi.
+//   mode 1 = UK "hi-lo" two-tone ("nee-naw"): hi held, then lo held, sharp
+//            switch. Phase stays continuous across the switch so there is no
+//            click. This is the recognisable British emergency tone.
+static bool ampSirenPlay(uint32_t ms, int loHz, int hiHz, uint32_t wailMs,
+                         uint8_t mode) {
+  const int rate = AMP_SAMPLE_RATE;
+  if (!ensureI2s(rate)) return false;
+  if (wailMs < 100) wailMs = 100;
+  if (loHz < 100) loHz = 100;
+  if (hiHz > 4000) hiHz = 4000;
+  if (hiHz <= loHz) hiHz = loHz + 200;
+
+  const uint32_t totalFrames = (uint32_t)((uint64_t)ms * (uint64_t)rate / 1000ULL);
+  const uint32_t wailFrames = (uint32_t)((uint64_t)wailMs * (uint64_t)rate / 1000ULL);
+  int16_t out[AMP_WRITE_FRAMES * 2];
+  float phase = 0.0f;
+  uint32_t done = 0;
+
+  i2sSilence(16);
+  while (done < totalFrames && !g_playCancel) {
+    size_t n = AMP_WRITE_FRAMES;
+    if (totalFrames - done < n) n = totalFrames - done;
+    for (size_t i = 0; i < n; i++) {
+      const uint32_t pos = (done + i) % wailFrames;
+      float f;
+      if (mode == 1) {
+        // First half of the cycle = high note, second half = low note.
+        f = (pos * 2 < wailFrames) ? (float)hiHz : (float)loHz;
+      } else {
+        float tri = (float)pos / (float)wailFrames;    // 0..1
+        tri = (tri < 0.5f) ? (tri * 2.0f) : (2.0f - tri * 2.0f);
+        f = (float)loHz + (float)(hiHz - loHz) * tri;
+      }
+      phase += 2.0f * (float)PI * f / (float)rate;
+      if (phase > 2.0f * (float)PI) phase -= 2.0f * (float)PI;
+      int32_t s = (int32_t)(sinf(phase) * 9000.0f);
+      s = (s * g_ampVolume) / 100;
+      if (s > 32767) s = 32767;
+      if (s < -32768) s = -32768;
+      out[i * 2] = (int16_t)s;
+      out[i * 2 + 1] = (int16_t)s;
+    }
+    if (!i2sWriteAll(out, n * 2 * sizeof(int16_t))) break;
+    done += (uint32_t)n;
+    yield();
+  }
+  i2sSilence(rate / 40);
+  ampStop();
+  return true;
+}
+
+static bool ampEnqueue(const AmpJob &job) {
+  if (!g_ampQ) return false;
+  g_playCancel = true;  // cut current clip so UDP/cam recover fast
+  AmpJob copy = job;
+  if (xQueueSend(g_ampQ, &copy, pdMS_TO_TICKS(20)) == pdTRUE) return true;
+  AmpJob dumped;
+  if (xQueueReceive(g_ampQ, &dumped, 0) == pdTRUE) {
+    if (dumped.wav) ampFree(dumped.wav);
+  }
+  if (xQueueSend(g_ampQ, &copy, 0) == pdTRUE) return true;
+  if (copy.wav) ampFree(copy.wav);
+  return false;
+}
+
+static void ampWorker(void *) {
+  AmpJob job;
+  for (;;) {
+    if (xQueueReceive(g_ampQ, &job, portMAX_DELAY) != pdTRUE) continue;
+    g_playCancel = false;
+    g_playBusy = true;
+    if (job.kind == AMP_JOB_WAV && job.wav) {
+      ampPlayWavBuffer(job.wav, job.wavLen);
+      ampFree(job.wav);
+    } else if (job.kind == AMP_JOB_URL && job.url[0]) {
+      playUrl(String(job.url));
+    } else if (job.kind == AMP_JOB_SIREN) {
+      ampSirenPlay(job.ms, job.loHz, job.hiHz, job.wailMs, job.mode);
+    }
+    g_playBusy = false;
+  }
 }
 
 static void cors(WebServer &s) {
@@ -249,15 +377,17 @@ static void handlePlayUrl() {
     s.send(400, "application/json", "{\"ok\":false,\"error\":\"url required\",\"played\":false}");
     return;
   }
-  // Play FIRST, then ACK — avoids false 200 while amp never spoke
-  g_playBusy = true;
-  bool ok = playUrl(url);
-  g_playBusy = false;
-  if (ok) {
-    s.send(200, "application/json", "{\"ok\":true,\"played\":true,\"via\":\"play_url\"}");
-  } else {
-    s.send(502, "application/json", "{\"ok\":false,\"error\":\"play_url failed\",\"played\":false}");
+  // ACK immediately — I2S play runs on ampWorker so drive UDP on this
+  // server keeps ticking. Play-then-ACK froze WASD for the whole clip.
+  AmpJob job;
+  memset(&job, 0, sizeof(job));
+  job.kind = AMP_JOB_URL;
+  url.toCharArray(job.url, sizeof(job.url));
+  if (!ampEnqueue(job)) {
+    s.send(503, "application/json", "{\"ok\":false,\"error\":\"amp queue full\",\"played\":false}");
+    return;
   }
+  s.send(200, "application/json", "{\"ok\":true,\"playing\":true,\"queued\":true,\"via\":\"play_url\"}");
 }
 
 static bool postBufEnsure(size_t need) {
@@ -378,16 +508,17 @@ static void handlePlayWav() {
   g_postBuf = nullptr;
   g_postLen = g_postCap = 0;
   g_postOverflow = false;
-  // Play then ACK so client knows amp actually spoke
-  g_playBusy = true;
-  bool ok = ampPlayWavBuffer(buf, len);
-  g_playBusy = false;
-  ampFree(buf);
-  if (ok) {
-    s.send(200, "application/json", "{\"ok\":true,\"playing\":true,\"played\":true}");
-  } else {
-    s.send(500, "application/json", "{\"ok\":false,\"error\":\"amp play failed\",\"played\":false}");
+  AmpJob job;
+  memset(&job, 0, sizeof(job));
+  job.kind = AMP_JOB_WAV;
+  job.wav = buf;
+  job.wavLen = len;
+  if (!ampEnqueue(job)) {
+    s.send(503, "application/json",
+           "{\"ok\":false,\"error\":\"amp queue full\",\"played\":false}");
+    return;
   }
+  s.send(200, "application/json", "{\"ok\":true,\"playing\":true,\"queued\":true}");
 }
 
 static void handleAmpOptions() {
@@ -395,10 +526,47 @@ static void handleAmpOptions() {
   g_ampSrv->send(204);
 }
 
+static void handleSiren() {
+  WebServer &s = *g_ampSrv;
+  cors(s);
+  AmpJob job;
+  memset(&job, 0, sizeof(job));
+  job.kind = AMP_JOB_SIREN;
+  job.ms = s.hasArg("ms") ? (uint32_t)s.arg("ms").toInt() : 3000;
+  // Default = UK "hi-lo" two-tone. mode=wail (or mode=0) gives the US sweep.
+  String md = s.hasArg("mode") ? s.arg("mode") : String("uk");
+  md.toLowerCase();
+  job.mode = (md == "wail" || md == "sweep" || md == "us" || md == "0") ? 0 : 1;
+  if (job.mode == 1) {
+    // Classic British two-tone notes: ~970 Hz over ~600 Hz, ~1s per full
+    // nee-naw (≈500 ms each note).
+    job.loHz = s.hasArg("lo") ? s.arg("lo").toInt() : 600;
+    job.hiHz = s.hasArg("hi") ? s.arg("hi").toInt() : 970;
+    job.wailMs = s.hasArg("wail") ? (uint32_t)s.arg("wail").toInt() : 1000;
+  } else {
+    job.loHz = s.hasArg("lo") ? s.arg("lo").toInt() : 600;
+    job.hiHz = s.hasArg("hi") ? s.arg("hi").toInt() : 1600;
+    job.wailMs = s.hasArg("wail") ? (uint32_t)s.arg("wail").toInt() : 700;
+  }
+  if (job.ms < 200) job.ms = 200;
+  if (job.ms > 15000) job.ms = 15000;  // never let a stuck request wail forever
+  if (!ampEnqueue(job)) {
+    s.send(503, "application/json", "{\"ok\":false,\"error\":\"amp queue full\"}");
+    return;
+  }
+  char buf[192];
+  snprintf(buf, sizeof(buf),
+           "{\"ok\":true,\"siren\":true,\"mode\":%u,\"ms\":%u,\"lo\":%d,\"hi\":%d,\"wail\":%u}",
+           (unsigned)job.mode, (unsigned)job.ms, job.loHz, job.hiHz,
+           (unsigned)job.wailMs);
+  s.send(200, "application/json", buf);
+}
+
 static void handleStopAudio() {
   cors(*g_ampSrv);
-  ampStop();
-  g_ampSrv->send(200, "application/json", "{\"ok\":true,\"stopped\":true,\"i2s\":false}");
+  g_playCancel = true;
+  if (!g_playBusy) ampStop();
+  g_ampSrv->send(200, "application/json", "{\"ok\":true,\"stopped\":true,\"i2s\":\"stopping\"}");
 }
 
 static void handleVolume() {
@@ -419,7 +587,13 @@ static void handleVolume() {
 void ampInit() {
   // Lazy I2S on first play — keep boot quiet (no chirp / boot tone)
   g_ampVolume = 100;
-  Serial.printf("Amp MAX98357A pins BCLK=%d LRC=%d DOUT=%d (lazy I2S, vol=%d, silent boot)\n",
+  g_ampQ = xQueueCreate(2, sizeof(AmpJob));
+  if (g_ampQ) {
+    // Core 0 (with cam), NOT core 1 — drive task (prio 5) on core 1 was
+    // starving audio and cutting songs when driving.
+    xTaskCreatePinnedToCore(ampWorker, "ampPlay", 8192, nullptr, 3, nullptr, 0);
+  }
+  Serial.printf("Amp MAX98357A pins BCLK=%d LRC=%d DOUT=%d (lazy I2S, vol=%d, silent boot, async play)\n",
                 PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT, g_ampVolume);
 }
 
@@ -435,11 +609,14 @@ void ampRegisterRoutes(WebServer &s) {
   s.on("/api/play_url", HTTP_OPTIONS, handleAmpOptions);
   s.on("/api/play_wav", HTTP_POST, handlePlayWav, handlePlayWavBody);
   s.on("/api/play_wav", HTTP_OPTIONS, handleAmpOptions);
+  s.on("/api/siren", HTTP_GET, handleSiren);
+  s.on("/api/siren", HTTP_POST, handleSiren);
+  s.on("/api/siren", HTTP_OPTIONS, handleAmpOptions);
   s.on("/api/stop_audio", HTTP_GET, handleStopAudio);
   s.on("/api/stop_audio", HTTP_POST, handleStopAudio);
   s.on("/api/stop_audio", HTTP_OPTIONS, handleAmpOptions);
   s.on("/api/volume", HTTP_GET, handleVolume);
   s.on("/api/volume", HTTP_POST, handleVolume);
   s.on("/api/volume", HTTP_OPTIONS, handleAmpOptions);
-  Serial.println("Amp routes: /api/play_wav /api/play_url /api/stop_audio /api/volume on this server");
+  Serial.println("Amp routes: /api/play_wav /api/play_url /api/siren /api/stop_audio /api/volume on this server");
 }
