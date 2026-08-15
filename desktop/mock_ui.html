@@ -1185,7 +1185,13 @@
     9: () => emergencyStop(),   // Menu/Start = panic stop
   };
 
+  // A Bluetooth trigger/stick can blip to zero for a frame between updates. If
+  // that instantly released the motor we'd send stop/go/stop/go — the "pulsing"
+  // that leaves the car too weak to actually move. Hold the last command through
+  // brief zero blips and only truly release after PAD_RELEASE_MS of real idle.
+  const PAD_RELEASE_MS = 180;
   let padOn = false, padRaf = null, padLastSent = '', padSendTs = 0, padTrailing = null;
+  let padZeroTimer = null;
   const padPrevBtn = {};
 
   function padAxis(v) {
@@ -1221,8 +1227,16 @@
     if (padTrailing) { clearTimeout(padTrailing); padTrailing = null; }
     padLastSent = key;
     padSendTs = now;
-    if (steer === 0 && drv === 0) releaseDrive();
-    else holdDrive(steer, drv);
+    if (steer === 0 && drv === 0) {
+      // Coast through a momentary zero; holdDrive's repeat keeps the last command
+      // alive meanwhile, so a noisy trigger reads as steady power, not a stutter.
+      if (!padZeroTimer) {
+        padZeroTimer = setTimeout(() => { padZeroTimer = null; releaseDrive(); }, PAD_RELEASE_MS);
+      }
+    } else {
+      if (padZeroTimer) { clearTimeout(padZeroTimer); padZeroTimer = null; }
+      holdDrive(steer, drv);
+    }
   }
   function padLoop() {
     padRaf = requestAnimationFrame(padLoop);
@@ -1260,7 +1274,9 @@
     if (padOn && !padRaf) padRaf = requestAnimationFrame(padLoop);
     if (!padOn && padRaf) {
       cancelAnimationFrame(padRaf); padRaf = null;
-      padLastSent = ''; releaseDrive();
+      padLastSent = '';
+      if (padZeroTimer) { clearTimeout(padZeroTimer); padZeroTimer = null; }
+      releaseDrive();
     }
     if (el && padOn) el.textContent = 'PAD READY';
   }
