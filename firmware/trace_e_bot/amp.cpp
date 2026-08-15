@@ -278,9 +278,13 @@ static bool playUrl(const String &url) {
 // Siren is synthesised on the ESP — no download, so it costs zero radio and
 // works even if the Z400 is offline.
 //   mode 0 = US "wail": continuous triangle sweep lo↔hi.
-//   mode 1 = UK "hi-lo" two-tone ("nee-naw"): hi held, then lo held, sharp
-//            switch. Phase stays continuous across the switch so there is no
-//            click. This is the recognisable British emergency tone.
+//   mode 1 = UK/European two-tone ("nee-naw"): two held notes a perfect fourth
+//            apart, the way a real two-tone horn is pitched.
+//
+// A bare sine at these pitches just sounds like a phone tone, so the two-tone
+// adds 2nd/3rd harmonics (air-horn timbre) and slurs between notes over ~22ms
+// instead of stepping — a real horn cannot change pitch instantly, and the
+// slur is what makes it read as "nee-naw" rather than two beeps.
 static bool ampSirenPlay(uint32_t ms, int loHz, int hiHz, uint32_t wailMs,
                          uint8_t mode) {
   const int rate = AMP_SAMPLE_RATE;
@@ -292,8 +296,13 @@ static bool ampSirenPlay(uint32_t ms, int loHz, int hiHz, uint32_t wailMs,
 
   const uint32_t totalFrames = (uint32_t)((uint64_t)ms * (uint64_t)rate / 1000ULL);
   const uint32_t wailFrames = (uint32_t)((uint64_t)wailMs * (uint64_t)rate / 1000ULL);
+  const uint32_t fadeFrames = (uint32_t)(rate / 50);   // 20ms in/out, no click
+  // One-pole pitch glide, ~22ms to settle on the new note.
+  const float glide = 1.0f / (0.022f * (float)rate);
+
   int16_t out[AMP_WRITE_FRAMES * 2];
   float phase = 0.0f;
+  float freq = (mode == 1) ? (float)hiHz : (float)loHz;
   uint32_t done = 0;
 
   i2sSilence(16);
@@ -301,19 +310,36 @@ static bool ampSirenPlay(uint32_t ms, int loHz, int hiHz, uint32_t wailMs,
     size_t n = AMP_WRITE_FRAMES;
     if (totalFrames - done < n) n = totalFrames - done;
     for (size_t i = 0; i < n; i++) {
-      const uint32_t pos = (done + i) % wailFrames;
-      float f;
+      const uint32_t idx = done + i;
+      const uint32_t pos = idx % wailFrames;
+      float sample;
+
       if (mode == 1) {
         // First half of the cycle = high note, second half = low note.
-        f = (pos * 2 < wailFrames) ? (float)hiHz : (float)loHz;
+        const float target = (pos * 2 < wailFrames) ? (float)hiHz : (float)loHz;
+        freq += (target - freq) * glide;
+        phase += 2.0f * (float)PI * freq / (float)rate;
+        if (phase > 2.0f * (float)PI) phase -= 2.0f * (float)PI;
+        // Horn timbre: fundamental + falling harmonics, normalised to ~1.0.
+        sample = (sinf(phase)
+                  + 0.45f * sinf(phase * 2.0f)
+                  + 0.22f * sinf(phase * 3.0f)) * 0.6f;
       } else {
         float tri = (float)pos / (float)wailFrames;    // 0..1
         tri = (tri < 0.5f) ? (tri * 2.0f) : (2.0f - tri * 2.0f);
-        f = (float)loHz + (float)(hiHz - loHz) * tri;
+        freq = (float)loHz + (float)(hiHz - loHz) * tri;
+        phase += 2.0f * (float)PI * freq / (float)rate;
+        if (phase > 2.0f * (float)PI) phase -= 2.0f * (float)PI;
+        sample = sinf(phase);
       }
-      phase += 2.0f * (float)PI * f / (float)rate;
-      if (phase > 2.0f * (float)PI) phase -= 2.0f * (float)PI;
-      int32_t s = (int32_t)(sinf(phase) * 9000.0f);
+
+      // Fade the very start and end so the speaker does not pop.
+      float env = 1.0f;
+      if (idx < fadeFrames) env = (float)idx / (float)fadeFrames;
+      const uint32_t left = totalFrames - idx;
+      if (left < fadeFrames) env = (float)left / (float)fadeFrames;
+
+      int32_t s = (int32_t)(sample * env * 11000.0f);
       s = (s * g_ampVolume) / 100;
       if (s > 32767) s = 32767;
       if (s < -32768) s = -32768;
@@ -538,10 +564,10 @@ static void handleSiren() {
   md.toLowerCase();
   job.mode = (md == "wail" || md == "sweep" || md == "us" || md == "0") ? 0 : 1;
   if (job.mode == 1) {
-    // Classic British two-tone notes: ~970 Hz over ~600 Hz, ~1s per full
-    // nee-naw (≈500 ms each note).
-    job.loHz = s.hasArg("lo") ? s.arg("lo").toInt() : 600;
-    job.hiHz = s.hasArg("hi") ? s.arg("hi").toInt() : 970;
+    // Two-tone horns are pitched a perfect fourth apart — A4 440 over D5 587
+    // is the classic pairing. ~1s per full nee-naw (≈500 ms a note).
+    job.loHz = s.hasArg("lo") ? s.arg("lo").toInt() : 440;
+    job.hiHz = s.hasArg("hi") ? s.arg("hi").toInt() : 587;
     job.wailMs = s.hasArg("wail") ? (uint32_t)s.arg("wail").toInt() : 1000;
   } else {
     job.loHz = s.hasArg("lo") ? s.arg("lo").toInt() : 600;

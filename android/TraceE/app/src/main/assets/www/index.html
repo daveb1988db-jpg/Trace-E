@@ -27,7 +27,13 @@
   }
   body.wide .screen-bolts, body.wide .screen-title { display: none; }
   body.wide .screen { width: 100%; height: 100%; border-radius: 0; }
-  body.wide #camFeed { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  /* FILL by default: edge-to-edge picture on a 16:9 tablet, no black bars.
+     The sensor is 4:3, so filling crops top/bottom — the FIT toggle gives the
+     whole frame back with bars for when you want maximum field of view. */
+  body.wide #camFeed {
+    width: 100%; height: 100%; object-fit: cover; background: #000;
+  }
+  body.wide.cam-fit #camFeed { object-fit: contain; }
 
   body.wide #wideDeck {
     display: block; position: fixed; inset: 0; z-index: 60;
@@ -52,27 +58,54 @@
     border: 2px solid rgba(120, 170, 255, .5); box-shadow: 0 3px 10px rgba(0,0,0,.5);
   }
   .wide-btn.ghost { background: rgba(20, 26, 48, .55); }
-  .wide-btn.stop {
-    color: #fff; background: linear-gradient(#ff5a63, #d5162a);
-    border-color: #ff9aa2; margin-left: 8px;
-  }
   .wide-btn:active { transform: translateY(1px); }
+
+  /* Clear pad for the big E-STOP — left thumb, opposite the stick. */
+  .e-stop-zone {
+    position: absolute; left: 10px; bottom: 14px;
+    width: min(42vh, 280px); height: min(42vh, 280px);
+    display: grid; place-items: center;
+    /* Keep this zone empty of other controls so the smash-button is alone. */
+    pointer-events: none;
+  }
+  .e-stop {
+    pointer-events: auto; touch-action: manipulation; cursor: pointer;
+    width: 72%; height: 72%; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 12px;
+    color: #fff; font-family: 'Orbitron', sans-serif; font-weight: 800;
+    letter-spacing: 1px; line-height: 1.05; text-align: center;
+    background:
+      radial-gradient(circle at 40% 30%, #ff7a82 0%, #e11d2e 55%, #8a0a16 100%);
+    border: 6px solid #fff;
+    box-shadow:
+      0 0 0 8px rgba(225, 29, 46, .35),
+      0 10px 28px rgba(0,0,0,.65);
+  }
+  .e-stop:active {
+    transform: scale(.94);
+    box-shadow: 0 0 0 10px rgba(225, 29, 46, .55), 0 4px 12px rgba(0,0,0,.7);
+  }
+  .e-stop .es-icon { font-size: clamp(1.6rem, 5vh, 2.4rem); line-height: 1; }
+  .e-stop .es-label { font-size: clamp(.7rem, 2.2vh, 1rem); }
+  .e-stop .es-sub { font-size: .55rem; letter-spacing: 2px; opacity: .9; }
 
   /* Vertical sensitivity sliders pinned to each side. */
   .wide-sens {
-    position: absolute; bottom: 22px; display: flex; flex-direction: column;
+    position: absolute; display: flex; flex-direction: column;
     align-items: center; gap: 8px; padding: 10px 8px; border-radius: 16px;
     background: rgba(12, 16, 34, .62); border: 1px solid rgba(120, 170, 255, .35);
     backdrop-filter: blur(3px);
   }
-  #wideSensL { left: 14px; }
-  #wideSensR { right: 14px; }
+  /* Lift L slider above the E-STOP pad so they don't fight for the same space. */
+  #wideSensL { left: 14px; top: 64px; bottom: auto; }
+  #wideSensR { right: 14px; bottom: 22px; }
   .ws-cap { color: #9fc6ff; font-weight: 800; font-size: .72rem; letter-spacing: 1px; }
   .ws-val { color: #ffe45c; font-weight: 800; font-size: .9rem; }
   .ws-range {
     writing-mode: vertical-lr; direction: rtl;      /* modern vertical range */
     -webkit-appearance: slider-vertical; appearance: slider-vertical;
-    width: 34px; height: 40vh; max-height: 260px; accent-color: #ffe45c;
+    width: 34px; height: 32vh; max-height: 220px; accent-color: #ffe45c;
     touch-action: none;
   }
 
@@ -334,8 +367,8 @@
   <div class="wide-top">
     <button type="button" class="wide-btn" id="wideExit">✕ EXIT</button>
     <button type="button" class="wide-btn ghost" id="wideSiren">🚨 SIREN</button>
+    <button type="button" class="wide-btn ghost" id="wideFit">⛶ FILL</button>
     <span class="wide-link" id="wideLink">DRIVE —</span>
-    <button type="button" class="wide-btn stop" id="wideStop">■ STOP</button>
   </div>
 
   <div class="wide-sens" id="wideSensL">
@@ -343,6 +376,15 @@
     <input type="range" id="sensL" class="ws-range" min="10" max="100" value="60" step="1"
            orient="vertical" aria-label="left steering sensitivity" />
     <span class="ws-val" id="sensLVal">60%</span>
+  </div>
+
+  <!-- Dedicated left-hand smash pad — kept clear of other controls. -->
+  <div class="e-stop-zone">
+    <button type="button" class="e-stop" id="wideStop" aria-label="Emergency stop">
+      <span class="es-icon">■</span>
+      <span class="es-label">E-STOP</span>
+      <span class="es-sub">MOTORS OFF</span>
+    </button>
   </div>
 
   <div class="joy" id="joy">
@@ -483,10 +525,29 @@
     if (el) el.textContent = 'DRIVE ' + mode + (ms ? ' - ' + Math.round(ms) + 'ms' : '');
   }
 
+  /* Fire-and-forget GET that is NOT subject to CORS.
+     The APK loads from file://, whose origin is "null", so fetch() to the
+     brain is blocked by the browser — that is why only the camera worked:
+     <img> loads ignore CORS, fetch does not. Drive/siren/lights never read a
+     response, so send them the same way the camera already succeeds.
+     A pool avoids cancelling an in-flight request by reusing one Image, and
+     the counter keeps every URL unique so nothing is served from cache. */
+  const beacons = [];
+  let beaconIdx = 0;
+  let beaconSeq = 0;
+  for (let i = 0; i < 8; i++) {
+    const im = new Image();
+    im.onload = im.onerror = () => {};   // JSON reply never decodes; ignore
+    beacons.push(im);
+  }
+  function beaconGet(url) {
+    const im = beacons[beaconIdx++ % beacons.length];
+    im.src = url + (url.indexOf('?') < 0 ? '?' : '&') + '_b=' + (++beaconSeq);
+  }
+
   function drive(left, right) {
     const q = 'left=' + left + '&right=' + right + '&esp=' + encodeURIComponent(esp);
-    fetch(brainUrl('/api/esp/drive?' + q), { method: 'GET', cache: 'no-store', keepalive: true })
-      .catch(() => {});
+    beaconGet(brainUrl('/api/esp/drive?' + q));
     setLink('UDP', 0);
   }
   // The ESP coasts if no drive command lands within DRIVE_FAILSAFE_MS (1200ms).
@@ -937,7 +998,7 @@
     localStorage.setItem('trace_e_snapback', snapBack ? '1' : '0');
     localStorage.setItem('trace_e_snap_l', String(snapPctL));
     localStorage.setItem('trace_e_snap_r', String(snapPctR));
-    fetch(brainUrl('/api/steer?' + q), { method: 'GET', cache: 'no-store' }).catch(() => {});
+    beaconGet(brainUrl('/api/steer?' + q));
   }
   function sendSnap(on) {
     snapBack = !!on;
@@ -964,9 +1025,7 @@
   // UK hi-lo two-tone ("nee-naw").
   function playSiren() {
     pow('SIREN');
-    fetch(brainUrl('/api/siren?ms=4000&mode=uk&esp=' + encodeURIComponent(esp)), {
-      method: 'GET', cache: 'no-store',
-    }).catch(() => {});
+    beaconGet(brainUrl('/api/siren?ms=4000&mode=uk&esp=' + encodeURIComponent(esp)));
   }
   $('btnSiren').addEventListener('click', playSiren);
 
@@ -1005,11 +1064,39 @@
   }
   $('btnWide').addEventListener('click', () => { wideOn = !wideOn; applyWide(); });
   $('wideExit').addEventListener('click', () => { wideOn = false; applyWide(); });
-  $('wideStop').addEventListener('click', () => {
-    held.clear(); joyActive = false; releaseDrive(); resetKnob();
-    stopFollowFetch('wide stop'); pow('MOTORS STOPPED');
+  function emergencyStop() {
+    held.clear();
+    joyActive = false;
+    joyId = null;
+    releaseDrive();
+    resetKnob();
+    stopFollowFetch('e-stop');
+    // Also kill anything on the amp (UK siren / song) — straight to the ESP.
+    try {
+      const host = String(esp || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+      if (host) beaconGet('http://' + host + ':8765/api/stop_audio');
+    } catch (_) {}
+    pow('E-STOP');
+  }
+  $('wideStop').addEventListener('click', emergencyStop);
+  $('wideStop').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    emergencyStop();
   });
   $('wideSiren').addEventListener('click', playSiren);
+
+  // FILL = crop to the screen (no bars). FIT = whole sensor frame with bars.
+  let camFit = localStorage.getItem('trace_e_cam_fit') === '1';
+  function applyCamFit() {
+    document.body.classList.toggle('cam-fit', camFit);
+    $('wideFit').textContent = camFit ? '⛶ FIT' : '⛶ FILL';
+  }
+  $('wideFit').addEventListener('click', () => {
+    camFit = !camFit;
+    localStorage.setItem('trace_e_cam_fit', camFit ? '1' : '0');
+    applyCamFit();
+  });
+  applyCamFit();
 
   // Per-side steering sensitivity: 10..100% of the full rack throw. The
   // firmware honours |left| as the steer magnitude, so a smaller number here
@@ -1093,6 +1180,112 @@
     const mo = new MutationObserver(() => { dst.textContent = src.textContent; });
     mo.observe(src, { childList: true, characterData: true, subtree: true });
   })();
+
+  /* ---- Xbox pad (Bluetooth): R2 = go, L2 = brake/reverse, left stick steers.
+     Polled every animation frame and dispatched the instant a value changes —
+     no debounce, so pad-to-motor is one frame + the UDP hop. Identical values
+     are skipped so a resting pad never floods the link. ---- */
+  const PAD_DEADZONE = 0.10;       // stick slop
+  const PAD_TRIGGER_FLOOR = 0.05;  // BT triggers rarely rest at exact 0
+  const PAD_MIN_GAP_MS = 8;        // cap at ~125 Hz, still sub-frame
+  const PAD_DRIVE_FLOOR = 75;      // toy DC motor needs this much to break free
+
+  // Everything else stays free for later toys (siren/song/follow/lights).
+  const PAD_ACTIONS = {
+    1: () => emergencyStop(),   // B = panic stop
+    9: () => emergencyStop(),   // Menu/Start = panic stop
+  };
+
+  let padOn = false, padRaf = null, padLastSent = '', padSendTs = 0, padTrailing = null;
+  const padPrevBtn = {};
+
+  function padAxis(v) {
+    const a = Math.abs(v || 0);
+    if (a < PAD_DEADZONE) return 0;
+    const t = (a - PAD_DEADZONE) / (1 - PAD_DEADZONE);
+    return v < 0 ? -t : t;
+  }
+  function padTrigger(gp, idx) {
+    const b = gp.buttons && gp.buttons[idx];
+    let v = 0;
+    if (b != null) v = (typeof b === 'object') ? b.value : b;
+    if (v > 1) v = 1;
+    return v > PAD_TRIGGER_FLOOR ? v : 0;
+  }
+  function padPick() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (let i = 0; i < pads.length; i++) {
+      if (pads[i] && pads[i].connected) return pads[i];
+    }
+    return null;
+  }
+  // Coalesce to PAD_MIN_GAP_MS but always deliver the newest value.
+  function padDispatch(steer, drv) {
+    const key = steer + ':' + drv;
+    if (key === padLastSent) return;
+    const now = performance.now();
+    const wait = PAD_MIN_GAP_MS - (now - padSendTs);
+    if (wait > 0) {
+      if (padTrailing) clearTimeout(padTrailing);
+      padTrailing = setTimeout(() => { padTrailing = null; padDispatch(steer, drv); }, wait);
+      return;
+    }
+    if (padTrailing) { clearTimeout(padTrailing); padTrailing = null; }
+    padLastSent = key;
+    padSendTs = now;
+    if (steer === 0 && drv === 0) releaseDrive();
+    else holdDrive(steer, drv);
+  }
+  function padLoop() {
+    padRaf = requestAnimationFrame(padLoop);
+    const gp = padPick();
+    if (!gp) return;
+
+    // Edge-triggered buttons for the reserved actions.
+    for (const idx in PAD_ACTIONS) {
+      const b = gp.buttons && gp.buttons[idx];
+      const down = b ? ((typeof b === 'object') ? b.pressed : b > .5) : false;
+      if (down && !padPrevBtn[idx]) PAD_ACTIONS[idx]();
+      padPrevBtn[idx] = down;
+    }
+
+    const rt = padTrigger(gp, 7);   // R2 go
+    const lt = padTrigger(gp, 6);   // L2 brake / reverse
+    const sx = padAxis(gp.axes && gp.axes[0]);
+    const throttle = rt - lt;       // L2 cancels R2, then reverses
+
+    let drv = 0;
+    if (throttle !== 0) {
+      const mag = Math.min(1, Math.abs(throttle));
+      drv = Math.round(PAD_DRIVE_FLOOR + mag * (100 - PAD_DRIVE_FLOOR));
+      if (throttle < 0) drv = -drv;
+    }
+    let steer = 0;
+    if (sx !== 0) {
+      const sens = (sx < 0 ? sensL : sensR) / 100;
+      steer = Math.round(Math.abs(sx) * 100 * sens) * (sx < 0 ? -1 : 1);
+    }
+
+    if ((drv !== 0 || steer !== 0) && (followOn || fetchOn)) {
+      stopFollowFetch('gamepad takeover', { coast: false });
+    }
+    padDispatch(steer, drv);
+  }
+  function padSetOn(on) {
+    padOn = !!on;
+    const el = $('wideLink');
+    if (padOn && !padRaf) padRaf = requestAnimationFrame(padLoop);
+    if (!padOn && padRaf) {
+      cancelAnimationFrame(padRaf); padRaf = null;
+      padLastSent = ''; releaseDrive();
+    }
+    if (el && padOn) el.textContent = 'PAD READY';
+  }
+  window.addEventListener('gamepadconnected', () => { padSetOn(true); pow('PAD ON'); });
+  window.addEventListener('gamepaddisconnected', () => {
+    if (!padPick()) { padSetOn(false); pow('PAD OFF'); }
+  });
+  if (padPick()) padSetOn(true);   // pad already paired before load
 
   function closeModal() { $('modal').hidden = true; }
   $('btnGear').addEventListener('click', () => { $('modal').hidden = false; });
