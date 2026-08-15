@@ -312,7 +312,7 @@ def _apply_steer_tune(esp_base: Optional[str] = None, force: bool = False) -> No
         if not force and now - _STEER_TUNE_TS < 12.0:
             return
         _STEER_TUNE_TS = now
-    h = _esp_host(esp_base)
+    h = _live_host(esp_base)
     if _SNAPBACK_ON:
         # Legacy center/center_pct first so pre-per-side firmware still tunes;
         # new firmware reads those, then the _l/_r pair overrides them.
@@ -386,7 +386,7 @@ def proxy_esp_siren(
     mode: Optional[object] = None,
 ) -> Tuple[int, bytes, str]:
     """Siren is synthesised on the ESP — this only kicks it off."""
-    h = _esp_host(esp_base)
+    h = _live_host(esp_base)
     try:
         dur = max(200, min(15000, int(ms)))  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -1254,6 +1254,23 @@ def _esp_host(esp_base: Optional[str] = None) -> str:
     return host or "192.168.1.108"
 
 
+def _live_host(esp_base: Optional[str] = None) -> str:
+    """Host for control paths, self-healing against DHCP.
+
+    The tablet app ships a fixed default ESP (e.g. .108) but the robot's DHCP
+    lease can move (.104, ...). The camera path keeps _ESP_LIVE fresh via
+    discovery, so prefer that cached truth over a stale override instead of
+    firing drive datagrams into the void. Falls back to the override only when
+    discovery has nothing recent. No network probe here — safe for the 90ms
+    drive hot path."""
+    now = time.time()
+    if _ESP_LIVE and (now - _ESP_LIVE_TS) < 60.0:
+        h = urllib.parse.urlparse(_ESP_LIVE).hostname
+        if h:
+            return h
+    return _esp_host(esp_base)
+
+
 def _esp_drive_base(esp_base: Optional[str] = None) -> str:
     return f"http://{_esp_host(esp_base)}:8765"
 
@@ -1520,7 +1537,7 @@ def proxy_esp_drive(query: str, esp_base: Optional[str] = None) -> Tuple[int, by
         query = urllib.parse.urlencode(
             {k: v[0] if len(v) == 1 else v for k, v in qs.items()}, doseq=True
         )
-    target = f"{_esp_drive_base(override or esp_base)}/api/drive"
+    target = f"http://{_live_host(override or esp_base)}:8765/api/drive"
     if query:
         target = f"{target}?{query}"
     if COVER_LISTEN is not None:
@@ -1551,7 +1568,7 @@ def proxy_esp_drive(query: str, esp_base: Optional[str] = None) -> Tuple[int, by
                 right = int((qs.get("right") or qs.get("r") or ["0"])[0] or 0)
             except Exception:
                 left = right = 0
-            host = _esp_host(override or esp_base)
+            host = _live_host(override or esp_base)
             if DRIVE_PUMP.send_lr(host, left, right):
                 # No cam hold on this path: a datagram does not compete with the
                 # video socket, so the feed can keep running while driving.
