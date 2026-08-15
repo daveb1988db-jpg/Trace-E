@@ -347,6 +347,7 @@
     <button type="button" class="wide-btn" id="wideExit">✕ EXIT</button>
     <button type="button" class="wide-btn ghost" id="wideSiren">🚨 SIREN</button>
     <button type="button" class="wide-btn ghost" id="wideLights">💡 LIGHTS</button>
+    <button type="button" class="wide-btn ghost" id="wideFlip">⇅ FLIP</button>
     <button type="button" class="wide-btn ghost" id="wideFit">⛶ FILL</button>
     <span class="wide-link" id="wideLink">DRIVE —</span>
   </div>
@@ -453,6 +454,8 @@
     // Show ON/OFF for what you SEE, not the inverted CSS flag.
     $('flipVState').textContent = camFlipV ? 'OFF' : 'ON';
     $('flipHState').textContent = camFlipH ? 'ON' : 'OFF';
+    const wf = $('wideFlip');
+    if (wf) wf.textContent = camFlipV ? '⇅ FLIPPED' : '⇅ FLIP';
   }
   applyFlip();
 
@@ -1055,6 +1058,11 @@
   $('wideLights').addEventListener('click', () => {
     setHeadlightBrightness(headlightBrightness > 0 ? 0 : lastHeadlightBrightness, true);
   });
+  $('wideFlip').addEventListener('click', () => {
+    camFlipV = !camFlipV;
+    localStorage.setItem('trace_e_cam_flip_v', camFlipV ? '1' : '0');
+    applyFlip();
+  });
 
   // FILL = crop to the screen (no bars). FIT = whole 4:3 sensor frame with bars.
   let camFit = localStorage.getItem('trace_e_cam_fit') === '1';
@@ -1089,6 +1097,23 @@
   });
   applySens();
 
+  // The front rack is a full-throw actuator, not a proportional servo: motors.cpp
+  // only puts it on the digital rails at |steer| >= 80 and anything under that is
+  // weak PWM that cannot shift the wheels at all. So the magnitude we send always
+  // stays above that rail, and the L/R sliders instead set how far the stick has
+  // to travel before it throws (higher = twitchier, lower = lazier).
+  const STEER_RAIL = 92;
+  function steerFromAxis(nx) {
+    const mag = Math.abs(nx || 0);
+    if (!mag) return 0;
+    const sens = ((nx < 0 ? sensL : sensR) || 60) / 100;
+    const engage = 0.06 + (1 - sens) * 0.44;
+    if (mag <= engage) return 0;
+    const t = (mag - engage) / (1 - engage);
+    const out = Math.round(STEER_RAIL + t * (100 - STEER_RAIL));
+    return nx < 0 ? -out : out;
+  }
+
   function joyVec(e) {
     const r = joy.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -1105,14 +1130,9 @@
     const my = -ny;
     if (Math.abs(my) > DZ) {
       const t = (Math.abs(my) - DZ) / (1 - DZ);
-      drive = Math.round(75 + t * 25) * (my < 0 ? -1 : 1);
+      drive = Math.round(PAD_DRIVE_FLOOR + t * (100 - PAD_DRIVE_FLOOR)) * (my < 0 ? -1 : 1);
     }
-    let steer = 0;
-    if (Math.abs(nx) > DZ) {
-      const t = (Math.abs(nx) - DZ) / (1 - DZ);
-      const sens = (nx < 0 ? sensL : sensR) / 100;
-      steer = Math.round(t * 100 * sens) * (nx < 0 ? -1 : 1);
-    }
+    const steer = steerFromAxis(nx);
     return [steer, drive];
   }
   function joyStart(e) {
@@ -1156,7 +1176,9 @@
   const PAD_DEADZONE = 0.10;
   const PAD_TRIGGER_FLOOR = 0.05;
   const PAD_MIN_GAP_MS = 8;
-  const PAD_DRIVE_FLOOR = 75;
+  // Rear can motor is plain PWM, so a light trigger was too weak to pull the car
+  // under load. Start high and keep the top of the trigger for the last push.
+  const PAD_DRIVE_FLOOR = 88;
 
   const PAD_ACTIONS = {
     1: () => emergencyStop(),   // B = panic stop
@@ -1225,11 +1247,7 @@
       drv = Math.round(PAD_DRIVE_FLOOR + mag * (100 - PAD_DRIVE_FLOOR));
       if (throttle < 0) drv = -drv;
     }
-    let steer = 0;
-    if (sx !== 0) {
-      const sens = (sx < 0 ? sensL : sensR) / 100;
-      steer = Math.round(Math.abs(sx) * 100 * sens) * (sx < 0 ? -1 : 1);
-    }
+    const steer = steerFromAxis(sx);
 
     if ((drv !== 0 || steer !== 0) && (followOn || fetchOn)) {
       stopFollowFetch('gamepad takeover', { coast: false });

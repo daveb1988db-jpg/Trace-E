@@ -8,7 +8,9 @@
 
 Sideload on the tablet (Settings → allow **install unknown apps** for your browser/file manager), then open **WEB-QUARTERS!**.
 
-**Wide-screen kids cockpit:** tap **🕹️ WIDE DRIVE** to flip into a full-screen landscape view with a big camera and an **analog thumb-stick**. Two **steering-sensitivity sliders (LEFT / RIGHT)** let you dial in how sharp each turn is, live. Also on the wide deck: **SIREN**, **LIGHTS**, **FILL/FIT** and a big red **E-STOP**.
+**Wide-screen kids cockpit:** tap **🕹️ WIDE DRIVE** to flip into a full-screen landscape view with a big camera and an **analog thumb-stick**. Also on the wide deck: **SIREN**, **LIGHTS**, **FLIP** (for an upside-down picture), **FILL/FIT** and a big red **E-STOP**.
+
+The **LEFT / RIGHT sliders** set how far the stick must travel before the wheels throw — higher is twitchier. They do *not* reduce steering power: the front rack is a full-throw actuator that the firmware only drives on its digital rails, so the steer command always stays above that threshold or the wheels would not move at all.
 
 ### 🎮 Xbox controller
 
