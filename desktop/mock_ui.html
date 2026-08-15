@@ -1043,6 +1043,8 @@
     held.clear();
     joyActive = false;
     joyId = null;
+    try { padClearAxisTimers(); } catch (_) {}
+    padHeldSteer = 0; padHeldDrv = 0; padLastSent = '';
     releaseDrive();
     resetKnob();
     stopFollowFetch('e-stop');
@@ -1097,21 +1099,19 @@
   });
   applySens();
 
-  // The front rack is a full-throw actuator, not a proportional servo: motors.cpp
-  // only puts it on the digital rails at |steer| >= 80 and anything under that is
-  // weak PWM that cannot shift the wheels at all. So the magnitude we send always
-  // stays above that rail, and the L/R sliders instead set how far the stick has
-  // to travel before it throws (higher = twitchier, lower = lazier).
-  const STEER_RAIL = 92;
+  // The front rack is a full-throw actuator: motors.cpp only puts it on the
+  // digital rails at |steer| >= 80. Always send full throw; L/R sliders only
+  // set how far the stick must travel before it engages.
+  const STEER_RAIL = 100;
   function steerFromAxis(nx) {
     const mag = Math.abs(nx || 0);
     if (!mag) return 0;
     const sens = ((nx < 0 ? sensL : sensR) || 60) / 100;
-    const engage = 0.06 + (1 - sens) * 0.44;
+    // Keep engage tight — the old 0.06+(1-sens)*0.44 band was so wide that a
+    // mid-throw stick kept dropping under threshold and killing the rack.
+    const engage = 0.04 + (1 - sens) * 0.18;
     if (mag <= engage) return 0;
-    const t = (mag - engage) / (1 - engage);
-    const out = Math.round(STEER_RAIL + t * (100 - STEER_RAIL));
-    return nx < 0 ? -out : out;
+    return nx < 0 ? -STEER_RAIL : STEER_RAIL;
   }
 
   function joyVec(e) {
@@ -1185,13 +1185,13 @@
     9: () => emergencyStop(),   // Menu/Start = panic stop
   };
 
-  // A Bluetooth trigger/stick can blip to zero for a frame between updates. If
-  // that instantly released the motor we'd send stop/go/stop/go — the "pulsing"
-  // that leaves the car too weak to actually move. Hold the last command through
-  // brief zero blips and only truly release after PAD_RELEASE_MS of real idle.
-  const PAD_RELEASE_MS = 180;
+  // Hold steer and drive INDEPENDENTLY through Bluetooth zero-blips. The old
+  // "release only when both are zero" still let a stick dip kill the rack while
+  // RT stayed held — that fired firmware snapback and felt like cutout + lag.
+  const PAD_RELEASE_MS = 140;
   let padOn = false, padRaf = null, padLastSent = '', padSendTs = 0, padTrailing = null;
-  let padZeroTimer = null;
+  let padHeldSteer = 0, padHeldDrv = 0;
+  let padSteerRelTimer = null, padDrvRelTimer = null;
   const padPrevBtn = {};
 
   function padAxis(v) {
@@ -1214,29 +1214,49 @@
     }
     return null;
   }
-  function padDispatch(steer, drv) {
+  function padClearAxisTimers() {
+    if (padSteerRelTimer) { clearTimeout(padSteerRelTimer); padSteerRelTimer = null; }
+    if (padDrvRelTimer) { clearTimeout(padDrvRelTimer); padDrvRelTimer = null; }
+  }
+  function padFlushHeld() {
+    const steer = padHeldSteer, drv = padHeldDrv;
     const key = steer + ':' + drv;
     if (key === padLastSent) return;
     const now = performance.now();
     const wait = PAD_MIN_GAP_MS - (now - padSendTs);
     if (wait > 0) {
       if (padTrailing) clearTimeout(padTrailing);
-      padTrailing = setTimeout(() => { padTrailing = null; padDispatch(steer, drv); }, wait);
+      padTrailing = setTimeout(() => { padTrailing = null; padFlushHeld(); }, wait);
       return;
     }
     if (padTrailing) { clearTimeout(padTrailing); padTrailing = null; }
     padLastSent = key;
     padSendTs = now;
-    if (steer === 0 && drv === 0) {
-      // Coast through a momentary zero; holdDrive's repeat keeps the last command
-      // alive meanwhile, so a noisy trigger reads as steady power, not a stutter.
-      if (!padZeroTimer) {
-        padZeroTimer = setTimeout(() => { padZeroTimer = null; releaseDrive(); }, PAD_RELEASE_MS);
-      }
-    } else {
-      if (padZeroTimer) { clearTimeout(padZeroTimer); padZeroTimer = null; }
-      holdDrive(steer, drv);
+    if (steer === 0 && drv === 0) releaseDrive();
+    else holdDrive(steer, drv);
+  }
+  function padDispatch(steer, drv) {
+    if (steer !== 0) {
+      if (padSteerRelTimer) { clearTimeout(padSteerRelTimer); padSteerRelTimer = null; }
+      padHeldSteer = steer;
+    } else if (padHeldSteer !== 0 && !padSteerRelTimer) {
+      padSteerRelTimer = setTimeout(() => {
+        padSteerRelTimer = null;
+        padHeldSteer = 0;
+        padFlushHeld();
+      }, PAD_RELEASE_MS);
     }
+    if (drv !== 0) {
+      if (padDrvRelTimer) { clearTimeout(padDrvRelTimer); padDrvRelTimer = null; }
+      padHeldDrv = drv;
+    } else if (padHeldDrv !== 0 && !padDrvRelTimer) {
+      padDrvRelTimer = setTimeout(() => {
+        padDrvRelTimer = null;
+        padHeldDrv = 0;
+        padFlushHeld();
+      }, PAD_RELEASE_MS);
+    }
+    padFlushHeld();
   }
   function padLoop() {
     padRaf = requestAnimationFrame(padLoop);
@@ -1275,7 +1295,8 @@
     if (!padOn && padRaf) {
       cancelAnimationFrame(padRaf); padRaf = null;
       padLastSent = '';
-      if (padZeroTimer) { clearTimeout(padZeroTimer); padZeroTimer = null; }
+      padClearAxisTimers();
+      padHeldSteer = 0; padHeldDrv = 0;
       releaseDrive();
     }
     if (el && padOn) el.textContent = 'PAD READY';

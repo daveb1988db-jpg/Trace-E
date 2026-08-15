@@ -11,8 +11,8 @@ android {
         applicationId = "com.tracee.bot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.2.4"
+        versionCode = 9
+        versionName = "0.2.5"
     }
 
     buildTypes {
