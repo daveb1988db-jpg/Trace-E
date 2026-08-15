@@ -8,7 +8,23 @@
 
 Sideload on the tablet (Settings → allow **install unknown apps** for your browser/file manager), then open **WEB-QUARTERS!**.
 
-**Wide-screen kids cockpit:** tap **🕹️ WIDE DRIVE** to flip into a full-screen landscape view with a big camera and an **analog thumb-stick**. Two **steering-sensitivity sliders (LEFT / RIGHT)** let you dial in how sharp each turn is, live. Also includes live per-side snap-back and a UK "nee-naw" siren.
+**Wide-screen kids cockpit:** tap **🕹️ WIDE DRIVE** to flip into a full-screen landscape view with a big camera and an **analog thumb-stick**. Two **steering-sensitivity sliders (LEFT / RIGHT)** let you dial in how sharp each turn is, live. Also on the wide deck: **SIREN**, **LIGHTS**, **FILL/FIT** and a big red **E-STOP**.
+
+### 🎮 Xbox controller
+
+Pair the pad to whichever device is showing the UI — the **tablet** (APK) or the **laptop** (browser at `http://<pc>:8788/`). The pad never talks to the ESP directly.
+
+| Control | Does |
+| --- | --- |
+| **R2** | Go (analog) |
+| **L2** | Brake, then reverse |
+| **Left stick X** | Steer, scaled by the LEFT/RIGHT sliders |
+| **B** / **Start** | E-STOP |
+| **A** | Siren |
+| **X** | Lights |
+| **Y** | Toggle wide drive |
+
+On Android the pad is read natively by the app shell, because a WebView's Gamepad API never sees a paired pad — without that the buttons only move focus around the screen.
 
 ---
 

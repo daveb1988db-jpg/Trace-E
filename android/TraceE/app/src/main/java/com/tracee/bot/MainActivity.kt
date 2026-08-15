@@ -7,6 +7,9 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -87,6 +90,89 @@ class MainActivity : AppCompatActivity() {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             controller.show(WindowInsetsCompat.Type.systemBars())
         }
+    }
+
+    /* ---- Bluetooth gamepad bridge ----
+       A pad paired to the tablet arrives as Activity key/motion events. The
+       WebView's Gamepad API does not see those, so navigator.getGamepads()
+       stays empty and the input just walks focus around the page instead of
+       driving. Intercept here and push normalised values into the page. */
+
+    private var padLastX = Float.NaN
+    private var padLastRt = Float.NaN
+    private var padLastLt = Float.NaN
+
+    private fun isPad(source: Int): Boolean =
+        (source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+            (source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (isPad(ev.source) && ev.action == MotionEvent.ACTION_MOVE) {
+            val x = ev.getAxisValue(MotionEvent.AXIS_X)
+            // Pads report triggers on either the trigger or the gas/brake axes.
+            val rt = maxOf(
+                ev.getAxisValue(MotionEvent.AXIS_RTRIGGER),
+                ev.getAxisValue(MotionEvent.AXIS_GAS)
+            )
+            val lt = maxOf(
+                ev.getAxisValue(MotionEvent.AXIS_LTRIGGER),
+                ev.getAxisValue(MotionEvent.AXIS_BRAKE)
+            )
+            pushPad(x, rt, lt)
+            return true
+        }
+        return super.dispatchGenericMotionEvent(ev)
+    }
+
+    override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
+        if (isPad(ev.source)) {
+            val action = when (ev.keyCode) {
+                KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_START -> "estop"
+                KeyEvent.KEYCODE_BUTTON_A -> "siren"
+                KeyEvent.KEYCODE_BUTTON_X -> "lights"
+                KeyEvent.KEYCODE_BUTTON_Y -> "wide"
+                else -> null
+            }
+            if (action != null) {
+                if (ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) padAction(action)
+                return true   // swallow so the pad never walks page focus
+            }
+            // Some pads send the triggers as buttons rather than axes.
+            if (ev.keyCode == KeyEvent.KEYCODE_BUTTON_R2 || ev.keyCode == KeyEvent.KEYCODE_BUTTON_L2) {
+                val on = if (ev.action == KeyEvent.ACTION_DOWN) 1f else 0f
+                if (ev.keyCode == KeyEvent.KEYCODE_BUTTON_R2) {
+                    pushPad(padLastX.orZero(), on, padLastLt.orZero())
+                } else {
+                    pushPad(padLastX.orZero(), padLastRt.orZero(), on)
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(ev)
+    }
+
+    private fun Float.orZero(): Float = if (isNaN()) 0f else this
+
+    /** Quantised to 0.02 so a resting stick does not spam the JS bridge. */
+    private fun pushPad(x: Float, rt: Float, lt: Float) {
+        val qx = quant(x)
+        val qr = quant(rt)
+        val ql = quant(lt)
+        if (qx == padLastX && qr == padLastRt && ql == padLastLt) return
+        padLastX = qx
+        padLastRt = qr
+        padLastLt = ql
+        evalJs("window.padNative && window.padNative($qx,$qr,$ql)")
+    }
+
+    private fun quant(v: Float): Float = Math.round(v * 50f) / 50f
+
+    private fun padAction(name: String) {
+        evalJs("window.padNativeAction && window.padNativeAction('$name')")
+    }
+
+    private fun evalJs(js: String) {
+        webView.post { webView.evaluateJavascript(js, null) }
     }
 
     override fun onDestroy() {

@@ -7,6 +7,121 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webquarters.css" />
+<style>
+  /* ---- WIDE DRIVE: full-screen 16:9 cockpit (laptop + Xbox pad) ---- */
+  #wideDeck { display: none; }
+  body.wide { overflow: hidden; }
+  body.wide .topbar, body.wide .footer, body.wide .deck, body.wide .speed-row,
+  body.wide .phase-pill, body.wide .ollie-row, body.wide .talk-text-row,
+  body.wide .cam-controls, body.wide .web-overlay, body.wide .corner-web {
+    display: none !important;
+  }
+  body.wide .stage {
+    position: fixed; inset: 0; margin: 0; padding: 0;
+    max-width: none; width: 100vw; height: 100vh; z-index: 40;
+  }
+  body.wide .screen-frame {
+    width: 100%; height: 100%; margin: 0; padding: 0;
+    border: 0; border-radius: 0; background: #000; box-shadow: none;
+  }
+  body.wide .screen-bolts, body.wide .screen-title { display: none; }
+  body.wide .screen { width: 100%; height: 100%; border-radius: 0; }
+  /* FILL edge-to-edge by default; sensor is 4:3 so filling 16:9 crops. */
+  body.wide #camFeed {
+    width: 100%; height: 100%; object-fit: cover; background: #000;
+  }
+  body.wide.cam-fit #camFeed { object-fit: contain; }
+
+  body.wide #wideDeck {
+    display: block; position: fixed; inset: 0; z-index: 60;
+    pointer-events: none;
+    font-family: 'Rajdhani', system-ui, sans-serif;
+  }
+  #wideDeck > * { pointer-events: auto; }
+
+  .wide-top {
+    position: absolute; top: 10px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .wide-link {
+    margin-left: auto; color: #7ef7c2; font-weight: 700; letter-spacing: 1px;
+    font-size: .8rem; text-shadow: 0 1px 4px #000; opacity: .9;
+  }
+  .wide-btn {
+    pointer-events: auto; cursor: pointer;
+    padding: 10px 16px; border-radius: 12px; font-weight: 800;
+    font-family: 'Orbitron', sans-serif; font-size: .8rem; letter-spacing: 1px;
+    color: #eaf2ff; background: rgba(20, 26, 48, .82);
+    border: 2px solid rgba(120, 170, 255, .5); box-shadow: 0 3px 10px rgba(0,0,0,.5);
+  }
+  .wide-btn.ghost { background: rgba(20, 26, 48, .55); }
+  .wide-btn:active { transform: translateY(1px); }
+
+  .e-stop-zone {
+    position: absolute; left: 10px; bottom: 14px;
+    width: min(42vh, 280px); height: min(42vh, 280px);
+    display: grid; place-items: center; pointer-events: none;
+  }
+  .e-stop {
+    pointer-events: auto; touch-action: manipulation; cursor: pointer;
+    width: 72%; height: 72%; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 12px;
+    color: #fff; font-family: 'Orbitron', sans-serif; font-weight: 800;
+    letter-spacing: 1px; line-height: 1.05; text-align: center;
+    background: radial-gradient(circle at 40% 30%, #ff7a82 0%, #e11d2e 55%, #8a0a16 100%);
+    border: 6px solid #fff;
+    box-shadow: 0 0 0 8px rgba(225, 29, 46, .35), 0 10px 28px rgba(0,0,0,.65);
+  }
+  .e-stop:active {
+    transform: scale(.94);
+    box-shadow: 0 0 0 10px rgba(225, 29, 46, .55), 0 4px 12px rgba(0,0,0,.7);
+  }
+  .e-stop .es-icon { font-size: clamp(1.6rem, 5vh, 2.4rem); line-height: 1; }
+  .e-stop .es-label { font-size: clamp(.7rem, 2.2vh, 1rem); }
+  .e-stop .es-sub { font-size: .55rem; letter-spacing: 2px; opacity: .9; }
+
+  .wide-sens {
+    position: absolute; display: flex; flex-direction: column;
+    align-items: center; gap: 8px; padding: 10px 8px; border-radius: 16px;
+    background: rgba(12, 16, 34, .62); border: 1px solid rgba(120, 170, 255, .35);
+  }
+  #wideSensL { left: 14px; top: 64px; bottom: auto; }
+  #wideSensR { right: 14px; bottom: 22px; }
+  .ws-cap { color: #9fc6ff; font-weight: 800; font-size: .72rem; letter-spacing: 1px; }
+  .ws-val { color: #ffe45c; font-weight: 800; font-size: .9rem; }
+  .ws-range {
+    writing-mode: vertical-lr; direction: rtl;
+    -webkit-appearance: slider-vertical; appearance: slider-vertical;
+    width: 34px; height: 32vh; max-height: 220px; accent-color: #ffe45c;
+    touch-action: none;
+  }
+
+  .joy {
+    position: absolute; right: 12vw; bottom: 20px;
+    width: 40vh; height: 40vh; max-width: 260px; max-height: 260px;
+    border-radius: 50%; touch-action: none;
+    background: radial-gradient(circle at 50% 42%, rgba(40,70,140,.55), rgba(8,12,28,.85));
+    border: 3px solid rgba(120, 170, 255, .55); box-shadow: 0 8px 24px rgba(0,0,0,.55);
+    display: grid; place-items: center;
+  }
+  .joy-ring {
+    position: absolute; inset: 14%; border-radius: 50%;
+    border: 2px dashed rgba(150, 190, 255, .35);
+  }
+  .joy-knob {
+    width: 38%; height: 38%; border-radius: 50%; display: grid; place-items: center;
+    font-size: 1.6rem; will-change: transform;
+    background: radial-gradient(circle at 40% 35%, #ff6b73, #c8102e);
+    border: 3px solid #fff; box-shadow: 0 4px 12px rgba(0,0,0,.6);
+    transition: transform .05s linear;
+  }
+  .joy.active .joy-knob { transition: none; }
+  .joy-hint {
+    position: absolute; bottom: 8%; color: #cfe0ff; opacity: .7;
+    font-weight: 800; letter-spacing: 2px; font-size: .7rem;
+  }
+</style>
 </head>
 <body class="asleep">
 <div class="web-overlay"></div>
@@ -153,6 +268,11 @@
         <span class="ct-text">UK SIREN</span>
         <span class="ct-state">nee-naw</span>
       </button>
+      <button type="button" class="cam-toggle" id="btnWide" aria-pressed="false">
+        <span class="ct-icon">🕹️</span>
+        <span class="ct-text">WIDE DRIVE</span>
+        <span class="ct-state">OFF</span>
+      </button>
       <label class="light-level" for="lightBrightness">
         <span>0V</span>
         <input id="lightBrightness" type="range" min="0" max="100" value="0" step="1" />
@@ -221,6 +341,45 @@
     <span class="speed-emoji">🕷💨</span>
   </div>
 </main>
+
+<div id="wideDeck" aria-hidden="true">
+  <div class="wide-top">
+    <button type="button" class="wide-btn" id="wideExit">✕ EXIT</button>
+    <button type="button" class="wide-btn ghost" id="wideSiren">🚨 SIREN</button>
+    <button type="button" class="wide-btn ghost" id="wideLights">💡 LIGHTS</button>
+    <button type="button" class="wide-btn ghost" id="wideFit">⛶ FILL</button>
+    <span class="wide-link" id="wideLink">DRIVE —</span>
+  </div>
+
+  <div class="wide-sens" id="wideSensL">
+    <span class="ws-cap">◀ LEFT</span>
+    <input type="range" id="sensL" class="ws-range" min="10" max="100" value="60" step="1"
+           orient="vertical" aria-label="left steering sensitivity" />
+    <span class="ws-val" id="sensLVal">60%</span>
+  </div>
+
+  <!-- Dedicated left-hand smash pad — kept clear of other controls. -->
+  <div class="e-stop-zone">
+    <button type="button" class="e-stop" id="wideStop" aria-label="Emergency stop">
+      <span class="es-icon">■</span>
+      <span class="es-label">E-STOP</span>
+      <span class="es-sub">MOTORS OFF</span>
+    </button>
+  </div>
+
+  <div class="joy" id="joy">
+    <div class="joy-ring"></div>
+    <div class="joy-knob" id="joyKnob">🕷️</div>
+    <span class="joy-hint">DRIVE</span>
+  </div>
+
+  <div class="wide-sens" id="wideSensR">
+    <span class="ws-cap">RIGHT ▶</span>
+    <input type="range" id="sensR" class="ws-range" min="10" max="100" value="60" step="1"
+           orient="vertical" aria-label="right steering sensitivity" />
+    <span class="ws-val" id="sensRVal">60%</span>
+  </div>
+</div>
 
 <footer class="footer">TRACE-E · FOLLOW OLLIE · HOLD TALK · FETCH PLAY · TEAM SPIDEY</footer>
 
@@ -734,6 +893,8 @@
     $('btnLights').setAttribute('aria-pressed', headlightsOn ? 'true' : 'false');
     $('lightsState').textContent = headlightsOn ? (headlightBrightness + '%') : 'OFF';
     $('lightBrightness').value = String(headlightBrightness);
+    const wl = $('wideLights');
+    if (wl) wl.textContent = headlightsOn ? ('💡 ' + headlightBrightness + '%') : '💡 LIGHTS';
   }
   function setHeadlightBrightness(level, immediate) {
     headlightBrightness = Math.max(0, Math.min(100, Number(level) || 0));
@@ -850,6 +1011,246 @@
   $('songText').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') playSong();
   });
+
+  /* ---- WIDE DRIVE cockpit: fullscreen 16:9 + stick/pad driving ---- */
+  const joy = $('joy'), knob = $('joyKnob');
+  let wideOn = false, joyActive = false, joyId = null;
+
+  function resetKnob() { knob.style.transform = 'translate(0px,0px)'; }
+  function applyWide() {
+    document.body.classList.toggle('wide', wideOn);
+    $('btnWide').setAttribute('aria-pressed', wideOn ? 'true' : 'false');
+    $('btnWide').querySelector('.ct-state').textContent = wideOn ? 'ON' : 'OFF';
+    $('wideDeck').setAttribute('aria-hidden', wideOn ? 'false' : 'true');
+    if (wideOn && !awake) setAwake(true);
+    if (!wideOn) { joyActive = false; releaseDrive(); resetKnob(); }
+    try {
+      if (wideOn && !document.fullscreenElement) document.documentElement.requestFullscreen();
+      if (!wideOn && document.fullscreenElement) document.exitFullscreen();
+    } catch (_) {}
+  }
+  $('btnWide').addEventListener('click', () => { wideOn = !wideOn; applyWide(); });
+  $('wideExit').addEventListener('click', () => { wideOn = false; applyWide(); });
+  // Leaving fullscreen with Esc should drop the cockpit too.
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && wideOn) { wideOn = false; applyWide(); }
+  });
+
+  function emergencyStop() {
+    held.clear();
+    joyActive = false;
+    joyId = null;
+    releaseDrive();
+    resetKnob();
+    stopFollowFetch('e-stop');
+    // Kill anything on the amp (siren / song) — straight to the ESP, no CORS.
+    try {
+      const host = String(esp || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+      if (host) new Image().src = 'http://' + host + ':8765/api/stop_audio?t=' + Date.now();
+    } catch (_) {}
+    pow('E-STOP');
+  }
+  $('wideStop').addEventListener('click', emergencyStop);
+  $('wideSiren').addEventListener('click', playSiren);
+  $('wideLights').addEventListener('click', () => {
+    setHeadlightBrightness(headlightBrightness > 0 ? 0 : lastHeadlightBrightness, true);
+  });
+
+  // FILL = crop to the screen (no bars). FIT = whole 4:3 sensor frame with bars.
+  let camFit = localStorage.getItem('trace_e_cam_fit') === '1';
+  function applyCamFit() {
+    document.body.classList.toggle('cam-fit', camFit);
+    $('wideFit').textContent = camFit ? '⛶ FIT' : '⛶ FILL';
+  }
+  $('wideFit').addEventListener('click', () => {
+    camFit = !camFit;
+    localStorage.setItem('trace_e_cam_fit', camFit ? '1' : '0');
+    applyCamFit();
+  });
+  applyCamFit();
+
+  // Per-side steering sensitivity: 10..100% of the full rack throw.
+  let sensL = clampPct(localStorage.getItem('trace_e_sens_l'), 60);
+  let sensR = clampPct(localStorage.getItem('trace_e_sens_r'), 60);
+  function applySens() {
+    $('sensL').value = sensL; $('sensR').value = sensR;
+    $('sensLVal').textContent = sensL + '%';
+    $('sensRVal').textContent = sensR + '%';
+  }
+  $('sensL').addEventListener('input', (e) => {
+    sensL = Math.max(10, clampPct(e.target.value, sensL));
+    $('sensLVal').textContent = sensL + '%';
+    localStorage.setItem('trace_e_sens_l', String(sensL));
+  });
+  $('sensR').addEventListener('input', (e) => {
+    sensR = Math.max(10, clampPct(e.target.value, sensR));
+    $('sensRVal').textContent = sensR + '%';
+    localStorage.setItem('trace_e_sens_r', String(sensR));
+  });
+  applySens();
+
+  function joyVec(e) {
+    const r = joy.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const rad = r.width / 2;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > rad) { dx = dx / dist * rad; dy = dy / dist * rad; }
+    knob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+    return [dx / rad, dy / rad];
+  }
+  function joyToDrive(nx, ny) {
+    const DZ = 0.16;
+    let drive = 0;
+    const my = -ny;
+    if (Math.abs(my) > DZ) {
+      const t = (Math.abs(my) - DZ) / (1 - DZ);
+      drive = Math.round(75 + t * 25) * (my < 0 ? -1 : 1);
+    }
+    let steer = 0;
+    if (Math.abs(nx) > DZ) {
+      const t = (Math.abs(nx) - DZ) / (1 - DZ);
+      const sens = (nx < 0 ? sensL : sensR) / 100;
+      steer = Math.round(t * 100 * sens) * (nx < 0 ? -1 : 1);
+    }
+    return [steer, drive];
+  }
+  function joyStart(e) {
+    e.preventDefault();
+    joy.classList.add('active');
+    joyActive = true; joyId = e.pointerId;
+    try { joy.setPointerCapture(e.pointerId); } catch (_) {}
+    if (followOn || fetchOn) stopFollowFetch('wide stick takeover', { coast: false });
+    joyMove(e);
+  }
+  function joyMove(e) {
+    if (!joyActive || (joyId !== null && e.pointerId !== joyId)) return;
+    const [nx, ny] = joyVec(e);
+    const [steer, drive] = joyToDrive(nx, ny);
+    if (steer === 0 && drive === 0) releaseDrive();
+    else holdDrive(steer, drive);
+  }
+  function joyEnd(e) {
+    if (joyId !== null && e && e.pointerId !== joyId) return;
+    joyActive = false; joyId = null;
+    joy.classList.remove('active');
+    resetKnob(); releaseDrive();
+  }
+  joy.addEventListener('pointerdown', joyStart);
+  joy.addEventListener('pointermove', joyMove);
+  joy.addEventListener('pointerup', joyEnd);
+  joy.addEventListener('pointercancel', joyEnd);
+
+  // Mirror the live DRIVE link pill into the wide HUD.
+  (function () {
+    const src = $('linkPill'), dst = $('wideLink');
+    if (!src || !dst) return;
+    const mo = new MutationObserver(() => { dst.textContent = src.textContent; });
+    mo.observe(src, { childList: true, characterData: true, subtree: true });
+  })();
+
+  /* ---- Xbox pad (Bluetooth to this laptop): R2 = go, L2 = brake/reverse,
+     left stick steers. Polled every animation frame and dispatched the instant
+     a value changes; identical values are skipped so a resting pad never
+     floods the link. ---- */
+  const PAD_DEADZONE = 0.10;
+  const PAD_TRIGGER_FLOOR = 0.05;
+  const PAD_MIN_GAP_MS = 8;
+  const PAD_DRIVE_FLOOR = 75;
+
+  const PAD_ACTIONS = {
+    1: () => emergencyStop(),   // B = panic stop
+    9: () => emergencyStop(),   // Menu/Start = panic stop
+  };
+
+  let padOn = false, padRaf = null, padLastSent = '', padSendTs = 0, padTrailing = null;
+  const padPrevBtn = {};
+
+  function padAxis(v) {
+    const a = Math.abs(v || 0);
+    if (a < PAD_DEADZONE) return 0;
+    const t = (a - PAD_DEADZONE) / (1 - PAD_DEADZONE);
+    return v < 0 ? -t : t;
+  }
+  function padTrigger(gp, idx) {
+    const b = gp.buttons && gp.buttons[idx];
+    let v = 0;
+    if (b != null) v = (typeof b === 'object') ? b.value : b;
+    if (v > 1) v = 1;
+    return v > PAD_TRIGGER_FLOOR ? v : 0;
+  }
+  function padPick() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (let i = 0; i < pads.length; i++) {
+      if (pads[i] && pads[i].connected) return pads[i];
+    }
+    return null;
+  }
+  function padDispatch(steer, drv) {
+    const key = steer + ':' + drv;
+    if (key === padLastSent) return;
+    const now = performance.now();
+    const wait = PAD_MIN_GAP_MS - (now - padSendTs);
+    if (wait > 0) {
+      if (padTrailing) clearTimeout(padTrailing);
+      padTrailing = setTimeout(() => { padTrailing = null; padDispatch(steer, drv); }, wait);
+      return;
+    }
+    if (padTrailing) { clearTimeout(padTrailing); padTrailing = null; }
+    padLastSent = key;
+    padSendTs = now;
+    if (steer === 0 && drv === 0) releaseDrive();
+    else holdDrive(steer, drv);
+  }
+  function padLoop() {
+    padRaf = requestAnimationFrame(padLoop);
+    const gp = padPick();
+    if (!gp) return;
+
+    for (const idx in PAD_ACTIONS) {
+      const b = gp.buttons && gp.buttons[idx];
+      const down = b ? ((typeof b === 'object') ? b.pressed : b > .5) : false;
+      if (down && !padPrevBtn[idx]) PAD_ACTIONS[idx]();
+      padPrevBtn[idx] = down;
+    }
+
+    const rt = padTrigger(gp, 7);
+    const lt = padTrigger(gp, 6);
+    const sx = padAxis(gp.axes && gp.axes[0]);
+    const throttle = rt - lt;
+
+    let drv = 0;
+    if (throttle !== 0) {
+      const mag = Math.min(1, Math.abs(throttle));
+      drv = Math.round(PAD_DRIVE_FLOOR + mag * (100 - PAD_DRIVE_FLOOR));
+      if (throttle < 0) drv = -drv;
+    }
+    let steer = 0;
+    if (sx !== 0) {
+      const sens = (sx < 0 ? sensL : sensR) / 100;
+      steer = Math.round(Math.abs(sx) * 100 * sens) * (sx < 0 ? -1 : 1);
+    }
+
+    if ((drv !== 0 || steer !== 0) && (followOn || fetchOn)) {
+      stopFollowFetch('gamepad takeover', { coast: false });
+    }
+    padDispatch(steer, drv);
+  }
+  function padSetOn(on) {
+    padOn = !!on;
+    const el = $('wideLink');
+    if (padOn && !padRaf) padRaf = requestAnimationFrame(padLoop);
+    if (!padOn && padRaf) {
+      cancelAnimationFrame(padRaf); padRaf = null;
+      padLastSent = ''; releaseDrive();
+    }
+    if (el && padOn) el.textContent = 'PAD READY';
+  }
+  window.addEventListener('gamepadconnected', () => { padSetOn(true); pow('PAD ON'); });
+  window.addEventListener('gamepaddisconnected', () => {
+    if (!padPick()) { padSetOn(false); pow('PAD OFF'); }
+  });
+  if (padPick()) padSetOn(true);
 
   function closeModal() { $('modal').hidden = true; }
   $('btnGear').addEventListener('click', () => { $('modal').hidden = false; });

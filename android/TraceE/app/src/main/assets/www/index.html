@@ -367,6 +367,7 @@
   <div class="wide-top">
     <button type="button" class="wide-btn" id="wideExit">✕ EXIT</button>
     <button type="button" class="wide-btn ghost" id="wideSiren">🚨 SIREN</button>
+    <button type="button" class="wide-btn ghost" id="wideLights">💡 LIGHTS</button>
     <button type="button" class="wide-btn ghost" id="wideFit">⛶ FILL</button>
     <span class="wide-link" id="wideLink">DRIVE —</span>
   </div>
@@ -928,24 +929,19 @@
     $('btnLights').setAttribute('aria-pressed', headlightsOn ? 'true' : 'false');
     $('lightsState').textContent = headlightsOn ? (headlightBrightness + '%') : 'OFF';
     $('lightBrightness').value = String(headlightBrightness);
+    const wl = $('wideLights');
+    if (wl) wl.textContent = headlightsOn ? ('💡 ' + headlightBrightness + '%') : '💡 LIGHTS';
   }
   function setHeadlightBrightness(level, immediate) {
     headlightBrightness = Math.max(0, Math.min(100, Number(level) || 0));
     if (headlightBrightness > 0) lastHeadlightBrightness = headlightBrightness;
     applyLights();
     clearTimeout(lightSendTimer);
+    // Beacon, not fetch: from file:// in the APK a fetch is CORS-blocked, so
+    // the state is applied optimistically above rather than echoed back.
     const send = () => {
       const q = 'brightness=' + headlightBrightness + '&esp=' + encodeURIComponent(esp);
-      fetch(brainUrl('/api/esp/headlights?' + q), { method: 'GET', cache: 'no-store' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
-          if (j && Number.isFinite(Number(j.brightness))) {
-            headlightBrightness = Number(j.brightness);
-            if (headlightBrightness > 0) lastHeadlightBrightness = headlightBrightness;
-            applyLights();
-          }
-        })
-        .catch(() => {});
+      beaconGet(brainUrl('/api/esp/headlights?' + q));
     };
     if (immediate) send();
     else lightSendTimer = setTimeout(send, 60);
@@ -1084,6 +1080,10 @@
     emergencyStop();
   });
   $('wideSiren').addEventListener('click', playSiren);
+
+  $('wideLights').addEventListener('click', () => {
+    setHeadlightBrightness(headlightBrightness > 0 ? 0 : lastHeadlightBrightness, true);
+  });
 
   // FILL = crop to the screen (no bars). FIT = whole sensor frame with bars.
   let camFit = localStorage.getItem('trace_e_cam_fit') === '1';
@@ -1236,22 +1236,12 @@
     if (steer === 0 && drv === 0) releaseDrive();
     else holdDrive(steer, drv);
   }
-  function padLoop() {
-    padRaf = requestAnimationFrame(padLoop);
-    const gp = padPick();
-    if (!gp) return;
-
-    // Edge-triggered buttons for the reserved actions.
-    for (const idx in PAD_ACTIONS) {
-      const b = gp.buttons && gp.buttons[idx];
-      const down = b ? ((typeof b === 'object') ? b.pressed : b > .5) : false;
-      if (down && !padPrevBtn[idx]) PAD_ACTIONS[idx]();
-      padPrevBtn[idx] = down;
-    }
-
-    const rt = padTrigger(gp, 7);   // R2 go
-    const lt = padTrigger(gp, 6);   // L2 brake / reverse
-    const sx = padAxis(gp.axes && gp.axes[0]);
+  // Shared by the Gamepad API loop and the native Android bridge so both
+  // routes drive with identical feel and honour the L/R sensitivity sliders.
+  function padApply(sxRaw, rtRaw, ltRaw) {
+    const sx = padAxis(sxRaw);
+    const rt = rtRaw > PAD_TRIGGER_FLOOR ? Math.min(1, rtRaw) : 0;
+    const lt = ltRaw > PAD_TRIGGER_FLOOR ? Math.min(1, ltRaw) : 0;
     const throttle = rt - lt;       // L2 cancels R2, then reverses
 
     let drv = 0;
@@ -1271,6 +1261,46 @@
     }
     padDispatch(steer, drv);
   }
+
+  function padLoop() {
+    padRaf = requestAnimationFrame(padLoop);
+    const gp = padPick();
+    if (!gp) return;
+
+    // Edge-triggered buttons for the reserved actions.
+    for (const idx in PAD_ACTIONS) {
+      const b = gp.buttons && gp.buttons[idx];
+      const down = b ? ((typeof b === 'object') ? b.pressed : b > .5) : false;
+      if (down && !padPrevBtn[idx]) PAD_ACTIONS[idx]();
+      padPrevBtn[idx] = down;
+    }
+
+    padApply(gp.axes && gp.axes[0], padTrigger(gp, 7), padTrigger(gp, 6));
+  }
+
+  /* Android delivers a Bluetooth pad as Activity key/motion events; the
+     WebView's Gamepad API never sees it (the input just walks page focus
+     instead). MainActivity intercepts it and calls straight in here. */
+  let padNativeSeen = false;
+  window.padNative = function (x, rt, lt) {
+    if (!padNativeSeen) {
+      padNativeSeen = true;
+      // Native feed wins: stop the polling loop so nothing double-drives.
+      if (padRaf) { cancelAnimationFrame(padRaf); padRaf = null; }
+      padOn = true;
+      const el = $('wideLink');
+      if (el) el.textContent = 'PAD READY';
+      pow('PAD ON');
+    }
+    padApply(Number(x) || 0, Number(rt) || 0, Number(lt) || 0);
+  };
+  window.padNativeAction = function (name) {
+    if (name === 'estop') emergencyStop();
+    else if (name === 'siren') playSiren();
+    else if (name === 'lights') {
+      setHeadlightBrightness(headlightBrightness > 0 ? 0 : lastHeadlightBrightness, true);
+    } else if (name === 'wide') { wideOn = !wideOn; applyWide(); }
+  };
   function padSetOn(on) {
     padOn = !!on;
     const el = $('wideLink');
