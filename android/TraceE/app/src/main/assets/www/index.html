@@ -411,11 +411,11 @@
     <p class="modal-sub">Brain PC + robot on the same Wi-Fi</p>
     <div class="field">
       <label>BRAIN PC (speak_server)</label>
-      <input id="brainInput" type="text" value="http://192.168.1.105:8788" spellcheck="false"/>
+      <input id="brainInput" type="text" value="http://192.168.1.108:8799" spellcheck="false"/>
     </div>
     <div class="field">
       <label>ESP / ROBOT</label>
-      <input id="espInput" type="text" value="http://192.168.1.108" spellcheck="false"/>
+      <input id="espInput" type="text" value="http://192.168.1.104" spellcheck="false"/>
     </div>
     <div class="modal-btns">
       <button class="btn btn-blue" id="btnSave" type="button">SAVE</button>
@@ -429,10 +429,10 @@
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   const servedHere = (location.protocol === 'http:' || location.protocol === 'https:')
-    && (location.port === '8788' || location.port === '8787' || location.port === '');
+    && (location.port === '8788' || location.port === '8787' || location.port === '8799' || location.port === '');
   let brain = (params.get('brain') || localStorage.getItem('trace_e_brain') || '').replace(/\/$/, '')
-    || ('http://192.168.1.105:8788');
-  let esp = (params.get('esp') || localStorage.getItem('trace_e_esp') || 'http://192.168.1.108').replace(/\/$/, '');
+    || ('http://192.168.1.108:8799');
+  let esp = (params.get('esp') || localStorage.getItem('trace_e_esp') || 'http://192.168.1.104').replace(/\/$/, '');
   let speed = 100;
   let awake = false;
   let camLive = false;
@@ -443,7 +443,7 @@
   let camFlipV = localStorage.getItem('trace_e_cam_flip_v') === '1';
   let camFlipH = localStorage.getItem('trace_e_cam_flip_h') === '1';
 
-  $('brainInput').value = brain || 'http://192.168.1.105:8788';
+  $('brainInput').value = brain || 'http://192.168.1.108:8799';
   $('espInput').value = esp;
 
   function brainUrl(path) {
@@ -480,30 +480,39 @@
 
   let camTimer = 0;
   let camGen = 0;
+  function espStreamUrl() {
+    const raw = (esp || 'http://192.168.1.104').replace(/\/$/, '');
+    const host = raw.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+    return 'http://' + host + ':82/stream';
+  }
   function startCam() {
     stopCamTick();
     const my = camGen;
     const img = $('camFeed');
-    const pump = () => {
+    let url = espStreamUrl();
+    try {
+      if (window.TraceEAndroid && window.TraceEAndroid.getMjpegProxyUrl) {
+        url = window.TraceEAndroid.getMjpegProxyUrl(esp) || url;
+      }
+    } catch (_) {}
+    img.onload = () => {
       if (my !== camGen) return;
-      img.onload = () => {
-        if (my !== camGen) return;
-        camLive = true;
-        img.style.display = 'block';
-        $('screenOff').style.display = 'none';
-        if (img.naturalWidth) {
-          $('camDims').textContent = img.naturalWidth + 'x' + img.naturalHeight;
-        }
-        camTimer = setTimeout(pump, 50);
-      };
-      img.onerror = () => {
-        if (my !== camGen) return;
-        camLive = false;
-        camTimer = setTimeout(pump, 80);
-      };
-      img.src = brainUrl('/api/esp/latest?t=' + Date.now());
+      camLive = true;
+      img.style.display = 'block';
+      $('screenOff').style.display = 'none';
+      if (img.naturalWidth && $('camDims')) {
+        $('camDims').textContent = img.naturalWidth + 'x' + img.naturalHeight;
+      }
     };
-    pump();
+    img.onerror = () => {
+      if (my !== camGen) return;
+      camLive = false;
+      camTimer = setTimeout(() => { if (my === camGen) startCam(); }, 1000);
+    };
+    img.style.display = 'block';
+    $('screenOff').style.display = 'none';
+    camLive = true;
+    img.src = url;
   }
   function stopCamTick() {
     camGen += 1;
